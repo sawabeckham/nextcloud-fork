@@ -1,0 +1,274 @@
+/*
+ * SPDX-FileCopyrightText: 2023 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#include "fileproviderxpc_mac_utils.h"
+
+#import "../../../shell_integration/MacOSX/NextcloudFileProviderKit/Sources/NextcloudFileProviderXPC/include/NextcloudFileProviderXPC.h"
+#import "fileprovider.h"
+
+#include <QLoggingCategory>
+
+#include "gui/accountmanager.h"
+
+namespace {
+const char *const clientCommunicationServiceName = "com.nextcloud.desktopclient.ClientCommunicationService";
+NSString *const nsClientCommunicationServiceName = [NSString stringWithUTF8String:clientCommunicationServiceName];
+constexpr int64_t fileProviderRequestWaitDelta = 1000000000; // 1 second
+}
+
+namespace OCC::Mac::FileProviderXPCUtils {
+
+Q_LOGGING_CATEGORY(lcFileProviderXPCUtils, "nextcloud.gui.macos.fileprovider.xpc.utils", QtInfoMsg)
+
+NSArray<NSFileProviderManager *> *getDomainManagers()
+{
+    dispatch_group_t group = dispatch_group_create();
+    __block NSMutableArray<NSFileProviderManager *> *const managers = NSMutableArray.array;
+
+    dispatch_group_enter(group);
+
+    // Set up connections for each domain
+    [NSFileProviderManager getDomainsWithCompletionHandler:^(NSArray<NSFileProviderDomain *> *const domains, NSError *const error) {
+        if (error != nil) {
+            qCWarning(lcFileProviderXPCUtils) << "Error getting file provider domains" << error;
+            dispatch_group_leave(group);
+            return;
+        }
+
+        for (NSFileProviderDomain *const domain in domains) {
+            qCInfo(lcFileProviderXPCUtils) << "Found file provider domain" << domain.identifier;
+
+            NSFileProviderManager *const manager = [NSFileProviderManager managerForDomain:domain];
+            if (manager) {
+                [managers addObject:manager];
+            } else {
+                qCWarning(lcFileProviderXPCUtils) << "Could not get manager for domain" << domain.identifier;
+            }
+        }
+
+        dispatch_group_leave(group);
+    }];
+
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    dispatch_release(group);
+
+    if (managers.count == 0) {
+        qCWarning(lcFileProviderXPCUtils) << "No file provider domains found!";
+    }
+
+    return managers.copy;
+}
+
+// TODO: This should work for all service names, not just the communication service!
+NSArray<NSDictionary<NSFileProviderServiceName, NSFileProviderService *> *> *getFileProviderServices(NSArray<NSFileProviderManager *> *managers)
+{
+    NSMutableArray<NSDictionary<NSFileProviderServiceName, NSFileProviderService *> *> *const fpServices = NSMutableArray.array;
+    dispatch_group_t group = dispatch_group_create();
+
+    for (NSFileProviderManager *const manager in managers) {
+        dispatch_group_enter(group);
+
+        [manager getServiceWithName:nsClientCommunicationServiceName
+                     itemIdentifier:NSFileProviderRootContainerItemIdentifier
+                  completionHandler:^(NSFileProviderService *const service, NSError *const error) {
+
+            if (error != nil) {
+                qCWarning(lcFileProviderXPCUtils) << "Failed to resolve service for file provider domain: " << error;
+            } else if (service == nil) {
+                qCWarning(lcFileProviderXPCUtils) << "Service is nil!";
+            } else if (service.name == nil) {
+                qCWarning(lcFileProviderXPCUtils) << "Service has no name";
+            } else {
+                @synchronized (fpServices) {
+                [fpServices addObject:@{service.name: service}];
+            }
+            }
+
+            dispatch_group_leave(group);
+        }];
+    }
+
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    dispatch_release(group);
+    return fpServices.copy;
+}
+
+NSArray<NSXPCConnection *> *connectToFileProviderServices(NSArray<NSDictionary<NSFileProviderServiceName, NSFileProviderService *> *> *fpServices)
+{
+    dispatch_group_t group = dispatch_group_create();
+    NSMutableArray<NSXPCConnection *> *const connections = NSMutableArray.array;
+
+    for (NSDictionary<NSFileProviderServiceName, NSFileProviderService *> *const services in fpServices) {
+        NSArray<NSFileProviderServiceName> *const serviceNamesArray = services.allKeys;
+
+        for (NSFileProviderServiceName serviceName in serviceNamesArray) {
+            qCInfo(lcFileProviderXPCUtils) << "Got service" << serviceName;
+
+            if (![serviceName isEqualToString:nsClientCommunicationServiceName]) {
+                continue;
+            }
+
+            NSFileProviderService *const service = services[serviceName];
+            dispatch_group_enter(group);
+
+            [service getFileProviderConnectionWithCompletionHandler:^(NSXPCConnection *const connection, NSError *const error){
+                if (error != nil) {
+                    qCWarning(lcFileProviderXPCUtils) << "Error getting file provider connection" << error;
+                    dispatch_group_leave(group);
+                    return;
+                }
+
+                qCInfo(lcFileProviderXPCUtils) << "Got file provider connection" << connection;
+
+                if (connection == nil) {
+                    qCWarning(lcFileProviderXPCUtils) << "Connection is nil";
+                    dispatch_group_leave(group);
+                    return;
+                }
+
+                @synchronized (connections) {
+                [connections addObject:connection];
+                }
+                dispatch_group_leave(group);
+            }];
+        }
+    }
+
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    dispatch_release(group);
+    return connections.copy;
+}
+
+void configureFileProviderConnection(NSXPCConnection *const connection)
+{
+    Q_ASSERT(connection != nil);
+    connection.interruptionHandler = ^{
+        qCInfo(lcFileProviderXPCUtils) << "File provider connection interrupted";
+    };
+    connection.invalidationHandler = ^{
+        qCInfo(lcFileProviderXPCUtils) << "File provider connection invalidated";
+    };
+    [connection resume];
+}
+
+NSObject *getRemoteServiceObject(NSXPCConnection *const connection, Protocol *const protocol)
+{
+    Q_ASSERT(connection != nil);
+    Q_ASSERT(protocol != nil);
+    const id remoteServiceObject = [connection remoteObjectProxyWithErrorHandler:^(NSError *const error){
+        qCWarning(lcFileProviderXPCUtils) << "Error getting remote object proxy" << error;
+    }];
+    if (remoteServiceObject == nil) {
+        return nil;
+    }
+    if (![remoteServiceObject conformsToProtocol:@protocol(ClientCommunicationProtocol)]) {
+        qCWarning(lcFileProviderXPCUtils) << "Remote service object does not conform to protocol";
+        return nil;
+    }
+
+    [remoteServiceObject retain];
+    return remoteServiceObject;
+}
+
+NSString *getFileProviderDomainIdentifier(NSObject<ClientCommunicationProtocol> *const clientCommService)
+{
+    Q_ASSERT(clientCommService != nil);
+    __block QString domainIdentifier;
+    __block auto gotDomainIdentifier = false;
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_group_enter(group);
+
+    [clientCommService getFileProviderDomainIdentifierWithCompletionHandler:^(NSString *const extensionAccountId, NSError *const error) {
+        if (error != nil) {
+            qCWarning(lcFileProviderXPCUtils) << "Error getting domain id from file provider service" << error;
+        } else if (extensionAccountId == nil) {
+            qCWarning(lcFileProviderXPCUtils) << "File provider service returned no domain id";
+        } else {
+            domainIdentifier = QString::fromNSString(extensionAccountId);
+            gotDomainIdentifier = true;
+        }
+
+        dispatch_group_leave(group);
+    }];
+
+    const auto waitResult = dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, fileProviderRequestWaitDelta));
+    if (waitResult != 0) {
+        qCWarning(lcFileProviderXPCUtils) << "Timed out while getting domain id from file provider service";
+    }
+
+    dispatch_release(group);
+
+    if (waitResult != 0 || !gotDomainIdentifier) {
+        return nil;
+    }
+
+    return [[NSString alloc] initWithString:domainIdentifier.toNSString()];
+}
+
+ClientCommunicationConnections processClientCommunicationConnections(NSArray<NSXPCConnection *> *const connections,
+                                                                      OCC::Mac::FileProviderService *const service)
+{
+    ClientCommunicationConnections clientCommConnections;
+
+    for (NSXPCConnection * const connection in connections) {
+        const auto exportedInterfaceProtocol = @protocol(AppProtocol);
+        const auto remoteObjectInterfaceProtocol = @protocol(ClientCommunicationProtocol);
+        connection.exportedInterface = [NSXPCInterface interfaceWithProtocol:exportedInterfaceProtocol];
+        
+        // Set the FileProviderService delegate as the exported object
+        if (service) {
+            connection.exportedObject = (id<AppProtocol>)service->delegate();
+        } else {
+            qCWarning(lcFileProviderXPCUtils) << "FileProviderService is null, cannot set exported object";
+        }
+        
+        connection.remoteObjectInterface = [NSXPCInterface interfaceWithProtocol:remoteObjectInterfaceProtocol];
+        configureFileProviderConnection(connection);
+
+        const auto clientCommService = (NSObject<ClientCommunicationProtocol> *)getRemoteServiceObject(connection, remoteObjectInterfaceProtocol);
+
+        if (clientCommService == nil) {
+            qCWarning(lcFileProviderXPCUtils) << "Client communication service is nil";
+            [connection invalidate];
+            continue;
+        }
+
+        const auto domainIdentifier = getFileProviderDomainIdentifier(clientCommService);
+
+        if (domainIdentifier == nil) {
+            qCWarning(lcFileProviderXPCUtils) << "Could not retrieve domain id from file provider service";
+            [clientCommService release];
+            [connection invalidate];
+            continue;
+        }
+
+        const auto domainIdentifierString = QString::fromNSString(domainIdentifier);
+
+        qCInfo(lcFileProviderXPCUtils) << "Got domain id"
+                                       << domainIdentifierString
+                                       << "from file provider service";
+
+        [domainIdentifier release];
+
+        if (clientCommConnections.contains(domainIdentifierString)) {
+            qCWarning(lcFileProviderXPCUtils) << "Duplicate domain id from file provider service"
+                                              << domainIdentifierString;
+            [connection invalidate];
+            [clientCommService release];
+            continue;
+        }
+
+        [connection retain];
+
+        ClientCommunicationConnection clientCommConnection;
+        clientCommConnection.clientCommunicationService = clientCommService;
+        clientCommConnection.xpcConnection = connection;
+        clientCommConnections.insert(domainIdentifierString, clientCommConnection);
+    }
+
+    return clientCommConnections;
+}
+
+} // namespace OCC::Mac::FileProviderXPCUtils

@@ -1,0 +1,773 @@
+//  SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+//  SPDX-License-Identifier: LGPL-3.0-or-later
+
+@preconcurrency import FileProvider
+import Foundation
+import NextcloudFileProviderXPC
+import NextcloudKit
+
+public extension Item {
+    private enum RemoteDeletionResult {
+        case success
+        case retryableServerFailure
+        case retryableAuthenticationFailure
+        case permanentFailure
+    }
+
+    private func deleteRemoteItem(
+        domain: NSFileProviderDomain?,
+        dbManager: FilesDatabaseManager
+    ) async -> RemoteDeletionResult {
+        let remotePath = metadata.remotePath()
+        let chunkUploadOwnerIdentifiersToDiscard = chunkUploadItemIdentifiersToDiscard(dbManager: dbManager)
+        let (_, _, error) = await remoteInterface.delete(
+            remotePath: remotePath,
+            account: account,
+            options: .init(),
+            taskHandler: { task in
+                if let domain {
+                    NSFileProviderManager(for: domain)?.register(
+                        task,
+                        forItemWithIdentifier: self.itemIdentifier,
+                        completionHandler: { _ in }
+                    )
+                }
+            }
+        )
+
+        guard error == .success || error.isNotFoundError else {
+            logger.error("Could not delete the remote item for an excluded destination.", [.item: itemIdentifier, .url: remotePath, .error: error])
+
+            if error == .urlError || error.isCouldntConnectError {
+                return .retryableServerFailure
+            }
+
+            if error.isUnauthenticatedError || error.isUnauthorizedError {
+                return .retryableAuthenticationFailure
+            }
+
+            // Server-side permission and policy failures are not made recoverable by retrying.
+            // Keep the exclusion marker so the provider's follow-up delete remains local-only.
+            return .permanentFailure
+        }
+
+        logger.info("Deleted the remote item for an excluded destination.", [.item: itemIdentifier, .url: remotePath])
+        discardChunkUploads(
+            forItemIdentifiers: chunkUploadOwnerIdentifiersToDiscard,
+            usingRemoteInterface: remoteInterface,
+            dbManager: dbManager,
+            logger: logger
+        )
+        return .success
+    }
+
+    func move(
+        newFileName: String,
+        newRemotePath: String,
+        newParentItemIdentifier: NSFileProviderItemIdentifier,
+        newParentItemRemotePath: String,
+        domain: NSFileProviderDomain? = nil,
+        dbManager: FilesDatabaseManager
+    ) async -> (Item?, Error?) {
+        let ocId = itemIdentifier.rawValue
+        let isFolder = contentType.conforms(to: .directory)
+        let oldRemotePath = metadata.serverUrl + "/" + filename
+        let (_, _, moveError) = await remoteInterface.move(
+            remotePathSource: oldRemotePath,
+            remotePathDestination: newRemotePath,
+            overwrite: false,
+            account: account,
+            options: .init(),
+            taskHandler: { task in
+                if let domain {
+                    NSFileProviderManager(for: domain)?.register(
+                        task,
+                        forItemWithIdentifier: self.itemIdentifier,
+                        completionHandler: { _ in }
+                    )
+                }
+            }
+        )
+
+        guard moveError == .success else {
+            logger.error(
+                """
+                Could not move file or folder: \(oldRemotePath)
+                    to \(newRemotePath),
+                    received error: \(moveError.errorCode)
+                    \(moveError.errorDescription)
+                """
+            )
+            return await (nil, moveError.fileProviderError(
+                handlingCollisionAgainstItemInRemotePath: newRemotePath,
+                dbManager: dbManager,
+                remoteInterface: remoteInterface,
+                log: logger.log
+            ))
+        }
+
+        if isFolder {
+            _ = dbManager.renameDirectoryAndPropagateToChildren(
+                ocId: ocId,
+                newServerUrl: newParentItemRemotePath,
+                newFileName: newFileName
+            )
+        } else {
+            dbManager.renameItemMetadata(
+                ocId: ocId,
+                newServerUrl: newParentItemRemotePath,
+                newFileName: newFileName
+            )
+        }
+
+        guard let newMetadata = dbManager.itemMetadata(ocId: ocId) else {
+            logger.error(
+                """
+                Could not acquire metadata of item with identifier: \(ocId),
+                    cannot correctly inform of modification
+                """
+            )
+            return (
+                nil,
+                NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier)
+            )
+        }
+
+        let displayFileActions = await Item.typeHasApplicableContextMenuItems(account: account, remoteInterface: remoteInterface, candidate: newMetadata.contentType)
+
+        let modifiedItem = await Item(
+            metadata: newMetadata,
+            parentItemIdentifier: newParentItemIdentifier,
+            account: account,
+            remoteInterface: remoteInterface,
+            dbManager: dbManager,
+            displayFileActions: displayFileActions,
+            remoteSupportsTrash: remoteInterface.supportsTrash(account: account),
+            log: logger.log
+        )
+        return (modifiedItem, nil)
+    }
+
+    private func modifyContents(
+        contents newContents: URL?,
+        remotePath: String,
+        newCreationDate: Date?,
+        newContentModificationDate: Date?,
+        baseVersion: NSFileProviderItemVersion,
+        options: NSFileProviderModifyItemOptions,
+        forcedChunkSize: Int?,
+        domain: NSFileProviderDomain?,
+        progress: Progress,
+        dbManager: FilesDatabaseManager,
+        appProxy: (any AppProtocol)? = nil
+    ) async -> (Item?, Error?) {
+        let ocId = itemIdentifier.rawValue
+
+        guard let newContents else {
+            logger.error("Cannot upload modified content because a nil URL was provided.", [.item: itemIdentifier])
+            return (nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
+        }
+
+        guard var metadata = dbManager.itemMetadata(ocId: ocId) else {
+            logger.error("Could not acquire metadata of item.", [.item: itemIdentifier])
+            return (
+                nil,
+                NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier)
+            )
+        }
+
+        guard let updatedMetadata = dbManager.setStatusForItemMetadata(metadata, status: .uploading) else {
+            logger.info("Could not acquire updated metadata of item. Unable to update item status to uploading.", [.item: itemIdentifier])
+            return (nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
+        }
+        metadata = updatedMetadata
+
+        var headers = [String: String]()
+        if let token = metadata.lockToken {
+            headers["If"] = "<\(remotePath)> (<opaquelocktoken:\(token)>)"
+        }
+
+        // Optimistic-concurrency guard. Without a precondition the PUT is
+        // unconditional and silently overwrites a server copy that changed since
+        // we last synced (another client, or Adobe's rapid multi-step re-saves) —
+        // last-writer-wins. Send `If-Match: <baseEtag>` so the server rejects a
+        // conflicting write with 412 instead of clobbering. `baseVersion` carries
+        // the version the local edit was based on (its `contentVersion` is the
+        // etag bytes — see Item.swift); fall back to our stored etag.
+        let baseEtag: String? = {
+            if let s = String(data: baseVersion.contentVersion, encoding: .utf8), !s.isEmpty {
+                return s
+            }
+            return metadata.etag.isEmpty ? nil : metadata.etag
+        }()
+
+        // macOS 26+ has a real conflict-resolution contract: when the system asks
+        // for it via `.failOnConflict`, we fail the upload with
+        // `.localVersionConflictingWithServer` and the system creates a conflict
+        // copy so both versions survive. That option/error is macOS 26.0+ only,
+        // but the extension deploys back to macOS 13, so on older systems we apply
+        // a best-effort heuristic: always send `If-Match` and, on 412, fail
+        // transiently + re-enumerate to stop the silent overwrite.
+        var shouldSendIfMatch = false
+        var nativeFailOnConflict = false
+        if #available(macOS 26.0, *) {
+            if options.contains(.failOnConflict) {
+                shouldSendIfMatch = true
+                nativeFailOnConflict = true
+            }
+        } else {
+            shouldSendIfMatch = true
+        }
+
+        // A lock token is already an exclusive write precondition. Its acquisition also changes
+        // the server etag, while File Provider's base version intentionally remains the version the
+        // document was opened from. Do not combine that pre-lock etag with the current lock token.
+        // Without a lock token, keep using the etag as the optimistic-concurrency guard.
+        let sentIfMatch = shouldSendIfMatch && baseEtag != nil && metadata.lockToken == nil
+        if sentIfMatch, let baseEtag {
+            // Our stored etag is normalized (unquoted); Sabre/DAV compares If-Match
+            // against the quoted resource ETag, so re-add the quotes.
+            headers["If-Match"] = "\"\(baseEtag)\""
+        }
+
+        let uploadOptions = NKRequestOptions(customHeader: headers, queue: .global(qos: .utility))
+
+        let (_, etag, date, size, error) = await upload(
+            fileLocatedAt: newContents.path,
+            toRemotePath: remotePath,
+            usingRemoteInterface: remoteInterface,
+            withAccount: account,
+            inChunksSized: forcedChunkSize,
+            forItemWithIdentifier: ocId,
+            dbManager: dbManager,
+            creationDate: newCreationDate,
+            modificationDate: newContentModificationDate,
+            options: uploadOptions,
+            log: logger.log,
+            requestHandler: { progress.setHandlersFromAfRequest($0) },
+            taskHandler: { task in
+                if let domain {
+                    NSFileProviderManager(for: domain)?.register(
+                        task,
+                        forItemWithIdentifier: self.itemIdentifier,
+                        completionHandler: { _ in }
+                    )
+                }
+            },
+            progressHandler: { $0.copyCurrentStateToProgress(progress) }
+        )
+
+        // `metadata` is a value snapshot captured before `upload()`. A partial chunked-upload
+        // failure leaves the current resumable upload identifier in Realm, but the error paths
+        // below write this snapshot back. Refresh the identifier so that write does not replace the
+        // current identifier with its pre-upload value. Successful and non-resumable uploads clear it.
+        metadata.chunkUploadId = dbManager.itemMetadata(ocId: ocId)?.chunkUploadId
+
+        guard error == .success else {
+            logger.error(
+                """
+                Could not upload item \(ocId)
+                with filename: \(filename),
+                received error: \(error.errorCode),
+                \(error.errorDescription)
+                """
+            )
+
+            // We sent `If-Match`, so a 412 here means the server copy diverged
+            // from the version this edit was based on — a genuine content conflict,
+            // not merely a stale lock. Do NOT commit the rejected upload. Clear any
+            // lock token, drop the row into an error state, and re-enumerate so the
+            // server's newer version is fetched.
+            if sentIfMatch, error.isPreconditionFailedError {
+                logger.error("Upload rejected: server version changed since last sync (If-Match precondition failed).", [.item: itemIdentifier, .name: filename])
+                metadata.lockToken = nil
+                metadata.status = Status.uploadError.rawValue
+                metadata.sessionError = error.errorDescription
+                dbManager.addItemMetadata(metadata)
+                if let domain, let manager = NSFileProviderManager(for: domain) {
+                    Task {
+                        try? await manager.signalEnumerator(for: .workingSet)
+                    }
+                }
+
+                // macOS 26+: hand the system the dedicated conflict error so it
+                // creates a conflict copy and both versions survive.
+                if nativeFailOnConflict, #available(macOS 26.0, *) {
+                    return (nil, NSFileProviderError(.localVersionConflictingWithServer))
+                }
+
+                // Older systems have no conflict-copy contract. Return a transient
+                // error (NSCocoaErrorDomain, outside the resolvable NSFileProviderError
+                // set) so the system re-drives the modification after the
+                // re-enumeration above has refreshed our base etag — turning a silent
+                // overwrite into a visible sync round-trip.
+                return (nil, NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError, userInfo: [
+                    NSLocalizedDescriptionKey: "Upload rejected: the file changed on the server since it was last synced."
+                ]))
+            }
+
+            if error.isPreconditionFailedError || error.isLockedError {
+                logger.info("Clearing stale lock token after lock/precondition error.", [.item: itemIdentifier])
+                metadata.lockToken = nil
+                // Signal re-enumeration: if the parent was also renamed (causing the
+                // precondition failure), the working set check will update the path
+                // before the system retries.
+                if let domain, let manager = NSFileProviderManager(for: domain) {
+                    Task {
+                        try? await manager.signalEnumerator(for: .workingSet)
+                    }
+                }
+            }
+
+            // Remote path gone — parent renamed on another client while the file was
+            // open. Clear any stale lock token and signal the working set enumerator
+            // so the system discovers the new path before retrying. Return
+            // cannotSynchronize rather than noSuchItem: the file still exists on the
+            // server at a different location.
+            if error.isNotFoundError {
+                metadata.lockToken = nil
+                metadata.status = Status.uploadError.rawValue
+                metadata.sessionError = error.errorDescription
+                dbManager.addItemMetadata(metadata)
+                if let domain, let manager = NSFileProviderManager(for: domain) {
+                    Task {
+                        try? await manager.signalEnumerator(for: .workingSet)
+                    }
+                }
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            metadata.status = Status.uploadError.rawValue
+            metadata.sessionError = error.errorDescription
+            dbManager.addItemMetadata(metadata)
+
+            // Surface the quota refusal in the main app's activity view (per-item entry +
+            // per-folder summary with a "Retry all uploads" button), matching the parity
+            // classic sync provides via `User::slotAddError(InsufficientRemoteStorage)` and
+            // `User::slotAddErrorToGui`. See nextcloud/desktop#9598.
+            if error.isGoingOverQuotaError {
+                let relativePath = remotePath.replacingOccurrences(of: account.davFilesUrl, with: "")
+                let fileBytes = (try? FileManager.default.attributesOfItem(atPath: newContents.path)[.size] as? Int64) ?? documentSize?.int64Value
+                InsufficientQuotaReporter.reportItem(relativePath: relativePath, fileName: filename, fileBytes: fileBytes, availableBytes: nil, domainIdentifier: domain?.identifier, appProxy: appProxy, log: logger.log)
+                await InsufficientQuotaReporter.reportSummary(domainIdentifier: domain?.identifier, appProxy: appProxy, log: logger.log)
+            }
+
+            // Moving should be done before uploading and should catch collisions already, but,
+            // it is painless to check here too just in case
+            return await (nil, error.fileProviderError(handlingCollisionAgainstItemInRemotePath: remotePath, dbManager: dbManager, remoteInterface: remoteInterface, log: logger.log))
+        }
+
+        // Re-arm the per-domain dedup so a future quota event can surface a fresh summary.
+        await InsufficientQuotaReporter.clearSummaryDedup(domainIdentifier: domain?.identifier)
+
+        logger.info(
+            """
+            Successfully uploaded item with identifier: \(ocId)
+            and filename: \(filename)
+            """
+        )
+
+        var newMetadata =
+            dbManager.setStatusForItemMetadata(updatedMetadata, status: .normal) ?? SendableItemMetadata(value: updatedMetadata)
+
+        // Prefer the mtime we just handed to the server (and which is on disk)
+        // over the truncated, second-precision value the PUT response carries
+        // in `Last-Modified`. Aligning `metadata.date` with what's on disk keeps
+        // NSDocument-style editors (Xcode, TextEdit, …) from seeing the file as
+        // "changed by another application" right after they save it.
+        newMetadata.date = newContentModificationDate ?? date ?? metadata.date
+        newMetadata.etag = etag ?? metadata.etag
+        newMetadata.fileProviderContentVersion = newMetadata.etag
+        newMetadata.ocId = ocId
+        newMetadata.size = size ?? 0
+        newMetadata.session = ""
+        newMetadata.sessionError = ""
+        newMetadata.sessionTaskIdentifier = 0
+        newMetadata.downloaded = true
+        newMetadata.uploaded = true
+        newMetadata.chunkUploadId = metadata.chunkUploadId
+
+        dbManager.addItemMetadata(newMetadata)
+
+        let displayFileActions = await Item.typeHasApplicableContextMenuItems(account: account, remoteInterface: remoteInterface, candidate: newMetadata.contentType)
+
+        let modifiedItem = await Item(
+            metadata: newMetadata,
+            parentItemIdentifier: parentItemIdentifier,
+            account: account,
+            remoteInterface: remoteInterface,
+            dbManager: dbManager,
+            displayFileActions: displayFileActions,
+            remoteSupportsTrash: remoteInterface.supportsTrash(account: account),
+            log: logger.log
+        )
+
+        return (modifiedItem, nil)
+    }
+
+    func modify(
+        itemTarget: NSFileProviderItem,
+        baseVersion: NSFileProviderItemVersion = NSFileProviderItemVersion(),
+        changedFields: NSFileProviderItemFields,
+        contents newContents: URL?,
+        options: NSFileProviderModifyItemOptions = [],
+        request: NSFileProviderRequest = NSFileProviderRequest(),
+        ignoredFiles: IgnoredFilesMatcher? = nil,
+        domain: NSFileProviderDomain? = nil,
+        forcedChunkSize: Int? = nil,
+        progress: Progress = .init(),
+        dbManager: FilesDatabaseManager,
+        appProxy: (any AppProtocol)? = nil,
+        exclusionMarkerWriter: (@Sendable (String) -> Bool)? = nil
+    ) async -> (Item?, Error?) {
+        // For your own good: don't use "self" below here, it'll save you pain debugging when you do
+        // refactors later on. Just use modifiedItem
+        var modifiedItem = self
+
+        // Bundle/package modifications never reach the server in this build (see Item.create).
+        // We still see them on this code path for items that are already on disk locally — e.g.
+        // a previously-synced bundle that the user just edited. Refuse the modification, route
+        // through `modifyUnuploaded` (which returns `NSFileProviderError(.excludedFromSync)`),
+        // and surface the situation in the activity view.
+        // Tracked at https://github.com/nextcloud/desktop/issues/9827.
+
+        if isBundleOrPackage {
+            logger.info("Refusing to sync modification of bundle/package — feature not supported.", [.name: filename])
+
+            if let domain {
+                let relativePath = (metadata.serverUrl + "/" + metadata.fileName).replacingOccurrences(of: account.davFilesUrl, with: "")
+                ItemExclusionReporter.report(relativePath: relativePath, fileName: filename, domainIdentifier: domain.identifier, appProxy: appProxy, log: logger.log)
+            }
+
+            guard let modifiedIgnored = await modifyUnuploaded(itemTarget: itemTarget, baseVersion: baseVersion, changedFields: changedFields, contents: newContents, options: options, request: request, ignoredFiles: ignoredFiles, domain: domain, forcedChunkSize: forcedChunkSize, progress: progress, dbManager: dbManager) else {
+                logger.error("Unable to mark bundle as excluded.", [.name: filename])
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            guard exclusionMarkerWriter?(metadata.ocId) ?? dbManager.markItemAsExcludedFromSync(ocId: metadata.ocId) else {
+                logger.error("Unable to persist bundle exclusion state.", [.item: itemIdentifier, .name: filename])
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            return (modifiedIgnored, NSFileProviderError(.excludedFromSync))
+        }
+
+        guard metadata.classFile != "lock", !isLockFileName(metadata.fileName) else {
+            return await modifiedItem.modifyLockFile(
+                itemTarget: itemTarget,
+                baseVersion: baseVersion,
+                changedFields: changedFields,
+                contents: newContents,
+                options: options,
+                request: request,
+                ignoredFiles: ignoredFiles,
+                domain: domain,
+                forcedChunkSize: forcedChunkSize,
+                progress: progress,
+                dbManager: dbManager
+            )
+        }
+
+        let sourceRelativePath = account.filesRootRelativePath(for: modifiedItem.metadata.remotePath())
+        let sourceIsExcluded = sourceRelativePath.map { ignoredFiles?.isExcluded($0) ?? false } ?? false
+        guard !sourceIsExcluded else {
+            logger.info("File is in the ignore list. Any follow-up provider deletion will have no remote effect.", [.item: modifiedItem.itemIdentifier, .name: modifiedItem.filename])
+
+            guard let modifiedIgnored = await modifyUnuploaded(
+                itemTarget: itemTarget,
+                baseVersion: baseVersion,
+                changedFields: changedFields,
+                contents: newContents,
+                options: options,
+                request: request,
+                ignoredFiles: ignoredFiles,
+                domain: domain,
+                forcedChunkSize: forcedChunkSize,
+                progress: progress,
+                dbManager: dbManager
+            ) else {
+                logger.error("Unable to modify ignored file.", [.item: modifiedItem.itemIdentifier, .name: modifiedItem.filename])
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            return (modifiedIgnored, NSFileProviderError(.excludedFromSync))
+        }
+
+        guard itemTarget.itemIdentifier == modifiedItem.itemIdentifier else {
+            logger.error("Could not modify item, different identifier to the item the modification was targeting (\(itemTarget.itemIdentifier.rawValue)).", [.item: modifiedItem])
+
+            return (nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
+        }
+
+        let newParentItemIdentifier = itemTarget.parentItemIdentifier
+        let isFolder = modifiedItem.contentType.conforms(to: .directory)
+        // Bundles/packages were short-circuited at the top of this function, so anything that
+        // makes it this far as a folder is a regular directory.
+
+        if options.contains(.mayAlreadyExist) {
+            // TODO: This needs to be properly handled with a check in the db
+            logger.info("Modification for item may already exist.", [.item: modifiedItem])
+        }
+
+        var newParentItemRemoteUrl: String
+
+        // The target parent should already be present in our database. The system will have synced
+        // remote changes and then, upon user interaction, will try to modify the item.
+        // That is, if the parent item has changed at all (it might not have)
+        if newParentItemIdentifier == .rootContainer {
+            newParentItemRemoteUrl = account.davFilesUrl
+        } else if newParentItemIdentifier == .trashContainer {
+            newParentItemRemoteUrl = account.trashUrl
+        } else {
+            guard let parentItemMetadata = dbManager.directoryMetadata(ocId: newParentItemIdentifier.rawValue) else {
+                logger.error("Not modifying item, could not find metadata for target parentItemIdentifier \"\(newParentItemIdentifier.rawValue)\"!", [.item: modifiedItem])
+                return (
+                    nil,
+                    NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier)
+                )
+            }
+
+            newParentItemRemoteUrl = parentItemMetadata.serverUrl + "/" + parentItemMetadata.fileName
+        }
+
+        let newServerUrlFileName = newParentItemRemoteUrl + "/" + itemTarget.filename
+        let destinationRelativePath = account.filesRootRelativePath(for: newServerUrlFileName)
+        let destinationIsExcluded = destinationRelativePath.map { ignoredFiles?.isExcluded($0) ?? false } ?? false
+
+        logger.debug("About to modify item.", [.item: modifiedItem])
+
+        if destinationIsExcluded {
+            logger.info("Destination is excluded from sync.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+
+            guard let modifiedIgnored = await modifyUnuploaded(
+                itemTarget: itemTarget,
+                baseVersion: baseVersion,
+                changedFields: changedFields,
+                contents: newContents,
+                options: options,
+                request: request,
+                ignoredFiles: ignoredFiles,
+                domain: domain,
+                forcedChunkSize: forcedChunkSize,
+                progress: progress,
+                dbManager: dbManager
+            ) else {
+                logger.error("Unable to modify item with an excluded destination.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            // The provider will call deleteItem after receiving .excludedFromSync. Persist this
+            // intent before deleting remotely so a successful remote delete cannot be followed by
+            // an unrecognised local deletion if the database write fails.
+            guard exclusionMarkerWriter?(modifiedItem.metadata.ocId) ?? dbManager.markItemAsExcludedFromSync(ocId: modifiedItem.metadata.ocId) else {
+                logger.error("Unable to persist exclusion state for an excluded destination.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+                return (nil, NSFileProviderError(.cannotSynchronize))
+            }
+
+            let hasRemoteCounterpart = modifiedItem.isUploaded || !modifiedItem.metadata.etag.isEmpty
+            if hasRemoteCounterpart, !modifiedItem.metadata.isTrashed {
+                switch await modifiedItem.deleteRemoteItem(domain: domain, dbManager: dbManager) {
+                    case .success:
+                        if let domain, let destinationRelativePath {
+                            ItemExclusionReporter.report(
+                                relativePath: destinationRelativePath,
+                                fileName: itemTarget.filename,
+                                reason: .excludedDestination,
+                                domainIdentifier: domain.identifier,
+                                appProxy: appProxy,
+                                log: logger.log
+                            )
+                        }
+
+                        return (modifiedIgnored, NSFileProviderError(.excludedFromSync))
+                    case .retryableServerFailure:
+                        if !dbManager.removeExcludedFromSyncMarker(ocId: modifiedItem.metadata.ocId) {
+                            logger.error("Unable to roll back exclusion state after remote deletion failed.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+                        }
+
+                        return (nil, NSFileProviderError(.serverUnreachable))
+                    case .retryableAuthenticationFailure:
+                        if !dbManager.removeExcludedFromSyncMarker(ocId: modifiedItem.metadata.ocId) {
+                            logger.error("Unable to roll back exclusion state after remote deletion failed.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+                        }
+
+                        return (nil, NSFileProviderError(.notAuthenticated))
+                    case .permanentFailure:
+                        logger.error("Retaining exclusion state after a permanent remote deletion failure.", [.item: modifiedItem.itemIdentifier, .name: itemTarget.filename])
+                        if let domain, let destinationRelativePath {
+                            ItemExclusionReporter.report(
+                                relativePath: destinationRelativePath,
+                                fileName: itemTarget.filename,
+                                reason: .remoteDeletionFailed,
+                                domainIdentifier: domain.identifier,
+                                appProxy: appProxy,
+                                log: logger.log
+                            )
+                        }
+                        return (modifiedIgnored, NSFileProviderError(.excludedFromSync))
+                }
+            }
+
+            if let domain, let destinationRelativePath {
+                ItemExclusionReporter.report(
+                    relativePath: destinationRelativePath,
+                    fileName: itemTarget.filename,
+                    reason: .excludedDestination,
+                    domainIdentifier: domain.identifier,
+                    appProxy: appProxy,
+                    log: logger.log
+                )
+            }
+
+            return (modifiedIgnored, NSFileProviderError(.excludedFromSync))
+        }
+
+        // We are handling an item that is available locally but not on the server -- so create it
+        // This can happen when a previously ignored file is no longer ignored
+        if !modifiedItem.isUploaded, modifiedItem.isDownloaded, modifiedItem.metadata.etag == "" {
+            return await modifiedItem.createUnuploaded(
+                itemTarget: itemTarget,
+                baseVersion: baseVersion,
+                changedFields: changedFields,
+                contents: newContents,
+                options: options,
+                request: request,
+                ignoredFiles: ignoredFiles,
+                domain: domain,
+                forcedChunkSize: forcedChunkSize,
+                progress: progress,
+                dbManager: dbManager
+            )
+        }
+
+        if changedFields.contains(.parentItemIdentifier)
+            && newParentItemIdentifier == .trashContainer
+            && modifiedItem.metadata.isTrashed
+        {
+            if changedFields.contains(.filename) {
+                logger.error("Tried to modify filename of already trashed item. This is not supported.", [.item: modifiedItem])
+            }
+
+            logger.info("Tried to trash item that is in fact already trashed.", [.item: modifiedItem])
+
+            return (modifiedItem, nil)
+        } else if changedFields.contains(.parentItemIdentifier) && newParentItemIdentifier == .trashContainer {
+            let (_, capabilities, _, error) = await remoteInterface.currentCapabilities(account: account, options: .init(), taskHandler: { _ in })
+
+            guard let capabilities, error == .success else {
+                logger.error("Could not acquire capabilities during item move to trash, won't proceed.", [.item: modifiedItem, .error: error])
+                return (nil, error.fileProviderError)
+            }
+
+            guard capabilities.files?.undelete == true else {
+                logger.error("Cannot delete item as server does not support trashing.", [.item: modifiedItem])
+                return (nil, NSError(domain: NSCocoaErrorDomain, code: NSFeatureUnsupportedError))
+            }
+
+            // We can't just move files into the trash, we need to issue a deletion; let's handle it
+            // Rename the item if necessary before doing the trashing procedures
+            if changedFields.contains(.filename) {
+                let currentParentItemRemotePath = modifiedItem.metadata.serverUrl
+                let preTrashingRenamedRemotePath = currentParentItemRemotePath + "/" + itemTarget.filename
+                let (renameModifiedItem, renameError) = await modifiedItem.move(newFileName: itemTarget.filename, newRemotePath: preTrashingRenamedRemotePath, newParentItemIdentifier: modifiedItem.parentItemIdentifier, newParentItemRemotePath: currentParentItemRemotePath, dbManager: dbManager)
+
+                guard renameError == nil, let renameModifiedItem else {
+                    logger.error("Could not rename pre-trash item.", [.item: modifiedItem.itemIdentifier, .error: error])
+                    return (nil, renameError)
+                }
+
+                modifiedItem = renameModifiedItem
+            }
+
+            let (trashedItem, trashingError) = await Self.trash(modifiedItem, account: account, dbManager: dbManager, domain: domain, log: logger.log)
+
+            guard trashingError == nil else {
+                return (modifiedItem, trashingError)
+            }
+
+            modifiedItem = trashedItem
+        } else if changedFields.contains(.filename) || changedFields.contains(.parentItemIdentifier) {
+            // Recover the item first
+            if modifiedItem.parentItemIdentifier != itemTarget.parentItemIdentifier &&
+                modifiedItem.parentItemIdentifier == .trashContainer &&
+                modifiedItem.metadata.isTrashed
+            {
+                let (restoredItem, restoreError) = await Self.restoreFromTrash(
+                    modifiedItem,
+                    account: account,
+                    remoteInterface: remoteInterface,
+                    dbManager: dbManager,
+                    domain: domain,
+                    log: logger.log
+                )
+                guard restoreError == nil else {
+                    return (modifiedItem, restoreError)
+                }
+                modifiedItem = restoredItem
+            }
+
+            // Maybe during the untrashing the item's intended modifications were complete.
+            // If not the case, or the item modification does not involve untrashing, move/rename.
+            if (changedFields.contains(.filename) && modifiedItem.filename != itemTarget.filename) ||
+                (changedFields.contains(.parentItemIdentifier) &&
+                    modifiedItem.parentItemIdentifier != itemTarget.parentItemIdentifier)
+            {
+                let (renameModifiedItem, renameError) = await modifiedItem.move(
+                    newFileName: itemTarget.filename,
+                    newRemotePath: newServerUrlFileName,
+                    newParentItemIdentifier: newParentItemIdentifier,
+                    newParentItemRemotePath: newParentItemRemoteUrl,
+                    dbManager: dbManager
+                )
+
+                guard renameError == nil, let renameModifiedItem else {
+                    return (nil, renameError)
+                }
+
+                modifiedItem = renameModifiedItem
+            }
+        }
+
+        guard !isFolder else {
+            logger.debug("System requested modification for folder of something other than folder name. This is not supported.", [.item: modifiedItem])
+            return (modifiedItem, nil)
+        }
+
+        guard newParentItemIdentifier != .trashContainer else {
+            logger.debug("System requested modification of item in trash. This is not supported.", [.item: modifiedItem])
+            return (modifiedItem, nil)
+        }
+
+        if changedFields.contains(.contents) {
+            logger.debug("Item content modified.", [.item: modifiedItem])
+
+            let newCreationDate = itemTarget.creationDate ?? creationDate
+            let newContentModificationDate =
+                itemTarget.contentModificationDate ?? contentModificationDate
+
+            let (contentModifiedItem, contentError) = await modifiedItem.modifyContents(
+                contents: newContents,
+                remotePath: newServerUrlFileName,
+                newCreationDate: newCreationDate,
+                newContentModificationDate: newContentModificationDate,
+                baseVersion: baseVersion,
+                options: options,
+                forcedChunkSize: forcedChunkSize,
+                domain: domain,
+                progress: progress,
+                dbManager: dbManager,
+                appProxy: appProxy
+            )
+
+            guard contentError == nil, let contentModifiedItem else {
+                logger.error("Could not modify contents.", [.item: modifiedItem, .error: contentError])
+                return (nil, contentError)
+            }
+
+            modifiedItem = contentModifiedItem
+        }
+
+        logger.debug("All modifications processed.", [.item: modifiedItem])
+        return (modifiedItem, nil)
+    }
+}

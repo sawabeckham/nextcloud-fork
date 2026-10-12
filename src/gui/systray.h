@@ -1,0 +1,254 @@
+/*
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2013 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef SYSTRAY_H
+#define SYSTRAY_H
+
+#include "accountmanager.h"
+#include "tray/usermodel.h"
+
+#include <QHash>
+#include <QQmlNetworkAccessManagerFactory>
+#include <QSystemTrayIcon>
+
+class QScreen;
+class QMenu;
+class QPalette;
+class QQmlApplicationEngine;
+class QQuickWindow;
+class QWindow;
+class QQuickWindow;
+class QGuiApplication;
+
+namespace OCC {
+
+class AccessManagerFactory : public QQmlNetworkAccessManagerFactory
+{
+public:
+    AccessManagerFactory();
+
+    QNetworkAccessManager* create(QObject *parent) override;
+};
+
+#ifdef Q_OS_MACOS
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_14
+enum MacNotificationAuthorizationOptions {
+    Default = 0,
+    Provisional
+};
+
+void setUserNotificationCenterDelegate();
+void checkNotificationAuth(MacNotificationAuthorizationOptions authOptions = MacNotificationAuthorizationOptions::Provisional);
+void registerNotificationCategories(const QString &localizedDownloadString);
+bool canOsXSendUserNotification();
+void sendOsXUserNotification(const QString &title, const QString &message);
+void sendOsXUpdateNotification(const QString &title, const QString &message, const QUrl &webUrl);
+void sendOsXTalkNotification(const QString &title, const QString &message, const QString &token, const QString &replyTo, const AccountStatePtr accountState);
+#endif
+void setTrayWindowLevelAndVisibleOnAllSpaces(QWindow *window);
+double menuBarThickness();
+bool showMacOSTrayPopup(const QRect &iconRect);
+void hideMacOSTrayPopup();
+bool macOSTrayPopupWasVisibleAtCurrentMouseDown();
+#endif
+
+/**
+ * @brief The Systray class
+ * @ingroup gui
+ */
+class Systray : public QSystemTrayIcon
+{
+    Q_OBJECT
+
+    Q_PROPERTY(QString windowTitle READ windowTitle CONSTANT)
+    Q_PROPERTY(bool useNormalWindow READ useNormalWindow CONSTANT)
+    Q_PROPERTY(bool isOpen READ isOpen WRITE setIsOpen NOTIFY isOpenChanged)
+    Q_PROPERTY(bool enableAddAccount READ enableAddAccount CONSTANT)
+
+public:
+    static Systray *instance();
+    ~Systray() override = default;
+
+    enum class TaskBarPosition { Bottom, Left, Top, Right };
+    Q_ENUM(TaskBarPosition);
+
+    enum class NotificationPosition { Default, TopLeft, TopRight, BottomLeft, BottomRight };
+    Q_ENUM(NotificationPosition);
+
+    enum class WindowPosition { Default, Center };
+    Q_ENUM(WindowPosition);
+
+    /** @brief Actions offered by the global tray synchronization control. */
+    enum class SyncControlState {
+        Unavailable, //!< No classic synchronization folders are configured.
+        Pause, //!< All classic synchronization folders are running.
+        Resume, //!< All classic synchronization folders are paused.
+        PauseAndResume, //!< Some classic synchronization folders are paused and others are running.
+    };
+    Q_ENUM(SyncControlState);
+
+    enum class FileDetailsPage { Activity, Sharing };
+    Q_ENUM(FileDetailsPage);
+
+    [[nodiscard]] QString windowTitle() const;
+    [[nodiscard]] bool useNormalWindow() const;
+
+    /** @brief Returns the actions that the global tray synchronization control should offer. */
+    [[nodiscard]] SyncControlState syncControlState() const;
+    [[nodiscard]] bool isOpen() const;
+    [[nodiscard]] bool isActivitySurfaceVisible() const;
+    void setTrayContextMenuVisible(const bool visible);
+
+    [[nodiscard]] bool enableAddAccount() const;
+
+    bool raiseDialogs();
+
+    [[nodiscard]] QQmlApplicationEngine* trayEngine() const;
+
+Q_SIGNALS:
+    void openAccountWizard();
+    void openSettings();
+    void openSettingsForSandboxReapproval();
+    void openHelp();
+    void shutdown();
+
+    void showFileDetailsPage(const QString &fileLocalPath, const OCC::Systray::FileDetailsPage page);
+    void sendChatMessage(const QString &token, const QString &message, const QString &replyTo);
+    void showErrorMessageDialog(const QString &error);
+
+    void isOpenChanged();
+
+    void hideSettingsDialog();
+
+public Q_SLOTS:
+    void openUrlInBrowser(const QUrl &url) const;
+
+    void createTrayEngine();
+    void create();
+
+    void showMessage(const QString &title, const QString &message, QSystemTrayIcon::MessageIcon icon = Information);
+    void showUpdateMessage(const QString &title, const QString &message, const QUrl &webUrl);
+    void showTalkMessage(const QString &title, const QString &message, const QString &replyTo, const QString &token, const OCC::AccountStatePtr &accountState);
+
+    void createCallDialog(const OCC::Activity &callNotification, const OCC::AccountStatePtr accountState);
+    void createEditFileLocallyLoadingDialog(const QString &fileName);
+    void destroyEditFileLocallyLoadingDialog();
+    void createResolveConflictsDialog(const OCC::ActivityList &allConflicts);
+    void createGovernanceLabelsDialog(AccountPtr account, const QString &fileName, const QString &fileId);
+    void createEncryptionTokenDiscoveryDialog();
+    void destroyEncryptionTokenDiscoveryDialog();
+
+    void forceWindowInit(QQuickWindow *window) const;
+    void positionWindowAtScreenCenter(QQuickWindow *window) const;
+    void positionNotificationWindow(QQuickWindow *window) const;
+
+    // Do not use this for QQuickWindow components managed by the QML engine,
+    // only for those managed by the C++ engine
+    void destroyDialog(QQuickWindow *window) const;
+
+    void showWindow(OCC::Systray::WindowPosition position = OCC::Systray::WindowPosition::Default);
+    void showTrayPopup(OCC::Systray::WindowPosition position = OCC::Systray::WindowPosition::Default);
+    void hideWindow();
+    void showActivitiesWindow(int userIndex = -1);
+    void showAssistantWindow(int userIndex = -1);
+    void showSearchWindow(int userIndex = -1);
+    void showUserStatusWindow(int userIndex);
+
+    void setSyncIsPaused(const bool syncIsPaused);
+    void setIsOpen(const bool isOpen);
+
+    void createShareDialog(const QString &localPath, const QString &fileId = {});
+    void createFileActivityDialog(const QString &localPath);
+    void showFileActionsDialog(const QString &localPath);
+
+    #ifdef BUILD_FILE_PROVIDER_MODULE
+
+    void slotShowFileProviderFileActionsDialog(const QString &fileId, const QString &localPath, const QString &remoteItemPath, const QString &fileProviderDomainIdentifier);
+
+    /**
+     * @brief Opens unified sharing for a file provider item.
+     * @param fileId The numeric server file id, equal to the WebDAV `fileid` property.
+     * @param localPath The local and absolute path of the item.
+     * @param remoteItemPath The server-side path of the item.
+     * @param fileProviderDomainIdentifier The file provider domain identifier for the account that owns the item.
+     */
+    void slotShowFileProviderUnifiedSharingDialog(const QString &fileId, const QString &localPath, const QString &remoteItemPath, const QString &fileProviderDomainIdentifier);
+
+    #endif
+
+    void presentShareViewInTray(const QString &localPath);
+    void presentFileActionsViewInSystray(const QString &localPath);
+
+private Q_SLOTS:
+    void slotUnpauseAllFolders();
+    void slotPauseAllFolders();
+
+private:
+    // Argument allows user to specify a specific dialog to be raised
+    bool raiseFileDetailDialogs(const QString &localPath = {});
+    void setPauseOnAllFoldersHelper(bool pause);
+
+    static Systray *_instance;
+    Systray();
+
+    void setupContextMenu();
+    void createFileDetailsDialog(const QString &localPath, const QString &fileId = {});
+
+    /**
+     * @brief Creates the unified sharing QML dialog with already-resolved item and account data.
+     */
+    void createUnifiedSharingDialog(const AccountPtr &account, const QString &localPath, const QString &fileId, const QString &remotePath);
+    void createFileActionsDialog(const QString &localPath);
+
+    #ifdef BUILD_FILE_PROVIDER_MODULE
+
+    void createFileProviderFileActionsDialog(const QString &fileId, const QString &localPath, const QString &remoteItemPath, const QString &fileProviderDomainIdentifier);
+
+    #endif
+
+    /**
+     * @param fileId This is optional and null by default. Only when there are no synchronization folders configured (for example when only a file provider is used) is this value required.
+     * @param remoteItemPath The server-side path of the item. Used as a fallback to determine the success response URL when no sync folder is configured.
+     */
+    void createFileActionsDialogWithAccountState(const QString &localPath, AccountState *accountState, const QString &fileId = {}, const QString &remoteItemPath = {});
+
+    [[nodiscard]] QScreen *currentScreen() const;
+    [[nodiscard]] QRect currentScreenRect() const;
+    [[nodiscard]] QRect currentAvailableScreenRect() const;
+    [[nodiscard]] QPoint computeNotificationReferencePoint(int spacing = 20, NotificationPosition position = NotificationPosition::Default) const;
+    [[nodiscard]] QPoint calcTrayIconCenter() const;
+    [[nodiscard]] TaskBarPosition taskbarOrientation() const;
+    [[nodiscard]] QRect computeWindowRect(int spacing, const QPoint &topLeft, const QPoint &bottomRight) const;
+    [[nodiscard]] QPoint computeNotificationPosition(int width, int height, int spacing = 20, NotificationPosition position = NotificationPosition::Default) const;
+
+    bool _isOpen = false;
+    bool _isTrayContextMenuVisible = false;
+    std::unique_ptr<QQmlApplicationEngine> _trayEngine;
+    QPointer<QMenu> _contextMenu;
+    QHash<QString, QPointer<QQuickWindow>> _activitiesWindows;
+    QHash<QString, QPointer<QQuickWindow>> _assistantWindows;
+    QHash<QString, QPointer<QQuickWindow>> _searchWindows;
+    QPointer<QQuickWindow> _userStatusWindow;
+
+    AccessManagerFactory _accessManagerFactory;
+
+    QSet<qint64> _callsAlreadyNotified;
+    QPointer<QObject> _editFileLocallyLoadingDialog;
+    QPointer<QObject> _encryptionTokenDiscoveryDialog;
+    QVector<QQuickWindow *> _fileDetailDialogs;
+};
+
+#ifndef Q_OS_MACOS
+/** @brief Returns the palette used to tint native Qt tray menu icons. */
+QPalette nativeMenuIconPalette(const QMenu *menu);
+void setupQtTrayContextMenu(QMenu *menu, Systray *systray);
+bool showQtTrayPopup(Systray *systray, const QRect &iconRect, Systray::WindowPosition position);
+void hideQtTrayPopup();
+#endif
+
+} // namespace OCC
+
+#endif //SYSTRAY_H

@@ -1,0 +1,349 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: CC0-1.0
+ *
+ * This software is in the public domain, furnished "as is", without technical
+ * support, and with no warranty, express or implied, as to its usefulness for
+ * any purpose.
+ */
+
+#include <QtTest>
+
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QUrl>
+
+#include "account.h"
+#include "accountmanager.h"
+#include "accountstate.h"
+#include "configfile.h"
+#include "logger.h"
+#include "managedsettingstestutils.h"
+#include "syncenginetestutils.h"
+
+using namespace OCC;
+using namespace Qt::StringLiterals;
+
+namespace
+{
+constexpr auto accountSettingsVersion = 13;
+}
+
+class TestAccountManager : public QObject
+{
+    Q_OBJECT
+
+private:
+    QTemporaryDir _configDir;
+
+    //! @brief The account state registered with AccountManager for the current
+    //! test. Set by addTestAccount() and cleared by the cleanup() slot.
+    AccountState *_accountState = nullptr;
+
+    //! @brief Creates an account with the given server URL and DAV user, registers
+    //! it with AccountManager, and stores the resulting AccountState in
+    //! _accountState so that cleanup() can remove it.
+    AccountState *addTestAccount(const QString &serverUrl, const QString &davUser)
+    {
+        auto account = Account::create();
+        account->setUrl(QUrl(serverUrl));
+        account->setDavUser(davUser);
+        account->setCredentials(new FakeCredentials{new FakeQNAM({})});
+        _accountState = AccountManager::instance()->addAccount(account);
+        return _accountState;
+    }
+
+    static void installEnforcedDeviceProxy()
+    {
+        ConfigFile::setDeviceSourcesFactory([] {
+            std::vector<std::unique_ptr<SettingSource>> sources;
+            sources.push_back(std::make_unique<MapSource>(
+                SettingSourceType::PlatformPolicy,
+                EnforcementState::Enforced,
+                200,
+                QVariantMap{{u"proxyType"_s, int(QNetworkProxy::HttpProxy)}, {u"proxyHost"_s, u"proxy.example.com"_s}, {u"proxyPort"_s, 8080}}));
+            return sources;
+        });
+    }
+
+private Q_SLOTS:
+    void initTestCase()
+    {
+        OCC::Logger::instance()->setLogFlush(true);
+        OCC::Logger::instance()->setLogDebug(true);
+
+        QStandardPaths::setTestModeEnabled(true);
+        QVERIFY(_configDir.isValid());
+        QVERIFY(ConfigFile::setConfDir(_configDir.path()));
+    }
+
+    //! @brief Keeps tests off the device policy of the machine running them.
+    void init()
+    {
+        ConfigFile::setDeviceSourcesFactory([] {
+            return std::vector<std::unique_ptr<SettingSource>>{};
+        });
+    }
+
+    //! @brief Removes the test account from AccountManager after each test
+    //! function, including every data-driven row.
+    void cleanup()
+    {
+        ConfigFile::setDeviceSourcesFactory([] {
+            return std::vector<std::unique_ptr<SettingSource>>{};
+        });
+        if (_accountState) {
+            AccountManager::instance()->removeAccountState(_accountState);
+            _accountState = nullptr;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // accountFromUserId – plain ASCII domain
+    // ---------------------------------------------------------------------------
+
+    //! @brief Verifies that accountFromUserId finds an account whose server URL
+    //! uses a plain ASCII domain when queried with the matching userId string.
+    void testAccountFromUserId_asciiDomain_matchesByExactId()
+    {
+        QVERIFY(addTestAccount(u"https://cloud.example.com"_s, u"alice"_s));
+
+        const auto found = AccountManager::instance()->accountFromUserId(u"alice@cloud.example.com"_s);
+        QVERIFY(found);
+        QCOMPARE(found->account()->davUser(), u"alice"_s);
+    }
+
+    //! @brief Verifies that accountFromUserId returns a null pointer for an
+    //! entirely unknown userId so that a mismatch is detectable.
+    void testAccountFromUserId_unknownId_returnsNull()
+    {
+        QVERIFY(addTestAccount(u"https://cloud.example.com"_s, u"alice"_s));
+
+        const auto notFound = AccountManager::instance()->accountFromUserId(u"bob@other.example.com"_s);
+        QVERIFY(!notFound);
+    }
+
+    // ---------------------------------------------------------------------------
+    // accountFromUserId – IDN / Punycode domain normalisation
+    // ---------------------------------------------------------------------------
+
+    void testAccountFromUserId_idnDomain_data()
+    {
+        QTest::addColumn<QString>("serverUrl");
+        QTest::addColumn<QString>("davUser");
+        QTest::addColumn<QString>("incomingUserId");
+        QTest::addColumn<bool>("shouldMatch");
+
+        const auto unicodeHost = u"cloud.münchen.example"_s;
+        const auto punycodeHost = QString::fromLatin1(QUrl::toAce(unicodeHost.toUtf8()));
+        const auto mismatchedPunycodeHost = QString::fromLatin1(QUrl::toAce(u"cloud.zürich.example"_s.toUtf8()));
+        QVERIFY2(!punycodeHost.isEmpty(), "The Unicode test host must convert to Punycode");
+        QVERIFY2(!mismatchedPunycodeHost.isEmpty(), "The mismatched Unicode test host must convert to Punycode");
+
+        // Account configured with the Unicode form of an IDN hostname.
+        // The nc://open/ link may arrive with the corresponding ACE/Punycode form.
+        QTest::newRow("unicode server url, unicode userid")
+            << u"https://cloud.münchen.example"_s
+            << u"testuser"_s
+            << u"testuser@cloud.münchen.example"_s
+            << true;
+
+        QTest::newRow("unicode server url, punycode userid")
+            << u"https://cloud.münchen.example"_s
+            << u"testuser"_s
+            << u"testuser@"_s + punycodeHost
+            << true;
+
+        // Account configured with the ACE/Punycode form (as reported in the bug):
+        // QUrl::host() decodes it to Unicode internally, so the stored host is
+        // Unicode regardless. Both userId forms must still match.
+        QTest::newRow("punycode server url, punycode userid")
+            << u"https://"_s + punycodeHost
+            << u"testuser"_s
+            << u"testuser@"_s + punycodeHost
+            << true;
+
+        QTest::newRow("punycode server url, unicode userid")
+            << u"https://"_s + punycodeHost
+            << u"testuser"_s
+            << u"testuser@cloud.münchen.example"_s
+            << true;
+
+        // A Punycode userid for a completely different domain must not match.
+        QTest::newRow("punycode server url, mismatched punycode userid")
+            << u"https://"_s + punycodeHost
+            << u"testuser"_s
+            << u"testuser@"_s + mismatchedPunycodeHost
+            << false;
+
+        // Non-IDN ASCII domain must still work normally.
+        QTest::newRow("ascii server url, ascii userid")
+            << u"https://nextcloud.example.com"_s
+            << u"testuser"_s
+            << u"testuser@nextcloud.example.com"_s
+            << true;
+    }
+
+    //! @brief Verifies that accountFromUserId correctly matches (or rejects)
+    //! accounts when the incoming userId contains either the Unicode or the
+    //! ACE/Punycode form of an internationalised domain name. This guards against
+    //! the regression where nc://open/ links with a Punycode host failed to find
+    //! an account whose stored URL was canonicalised to Unicode by QUrl.
+    void testAccountFromUserId_idnDomain()
+    {
+        QFETCH(QString, serverUrl);
+        QFETCH(QString, davUser);
+        QFETCH(QString, incomingUserId);
+        QFETCH(bool, shouldMatch);
+
+        QVERIFY(addTestAccount(serverUrl, davUser));
+
+        const auto found = AccountManager::instance()->accountFromUserId(incomingUserId);
+        if (shouldMatch) {
+            QVERIFY2(found, qPrintable(u"Expected to find account for userId '%1' but got null"_s.arg(incomingUserId)));
+            QCOMPARE(found->account()->davUser(), davUser);
+        } else {
+            QVERIFY2(!found, qPrintable(u"Expected no account for userId '%1' but found one"_s.arg(incomingUserId)));
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // accountFromUserId – IDN domain with non-standard port
+    // ---------------------------------------------------------------------------
+
+    //! @brief Verifies that accountFromUserId handles IDN hostnames correctly
+    //! when the server URL also specifies a non-standard port.
+    void testAccountFromUserId_idnDomainWithPort_data()
+    {
+        QTest::addColumn<QString>("serverUrl");
+        QTest::addColumn<QString>("davUser");
+        QTest::addColumn<QString>("incomingUserId");
+        QTest::addColumn<bool>("shouldMatch");
+
+        const auto unicodeHost = u"cloud.münchen.example"_s;
+        const auto punycodeHost = QString::fromLatin1(QUrl::toAce(unicodeHost.toUtf8()));
+        QVERIFY2(!punycodeHost.isEmpty(), "The Unicode test host must convert to Punycode");
+
+        QTest::newRow("unicode server url with port, punycode userid with port")
+            << u"https://"_s + unicodeHost + u":8443"_s
+            << u"testuser"_s
+            << u"testuser@"_s + punycodeHost + u":8443"_s
+            << true;
+
+        QTest::newRow("punycode server url with port, unicode userid with port")
+            << u"https://"_s + punycodeHost + u":8443"_s
+            << u"testuser"_s
+            << u"testuser@"_s + unicodeHost + u":8443"_s
+            << true;
+    }
+
+    //! @brief Companion to testAccountFromUserId_idnDomain covering the port
+    //! component of the userId so that port-qualified IDN accounts can be located.
+    void testAccountFromUserId_idnDomainWithPort()
+    {
+        QFETCH(QString, serverUrl);
+        QFETCH(QString, davUser);
+        QFETCH(QString, incomingUserId);
+        QFETCH(bool, shouldMatch);
+
+        QVERIFY(addTestAccount(serverUrl, davUser));
+
+        const auto found = AccountManager::instance()->accountFromUserId(incomingUserId);
+        if (shouldMatch) {
+            QVERIFY2(found, qPrintable(u"Expected to find account for userId '%1' but got null"_s.arg(incomingUserId)));
+            QCOMPARE(found->account()->davUser(), davUser);
+        } else {
+            QVERIFY2(!found, qPrintable(u"Expected no account for userId '%1' but found one"_s.arg(incomingUserId)));
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // managed proxy
+    // ---------------------------------------------------------------------------
+
+    //! @brief New accounts get the policy without a restart.
+    void testAddAccountAppliesEnforcedDeviceProxy()
+    {
+        installEnforcedDeviceProxy();
+
+        const auto account = addTestAccount(u"https://cloud.example.com"_s, u"alice"_s)->account();
+
+        QCOMPARE(account->proxyType(), QNetworkProxy::HttpProxy);
+        QCOMPARE(account->proxyHostName(), u"proxy.example.com"_s);
+        QCOMPARE(account->proxyPort(), 8080);
+        QVERIFY(account->proxySettingsAreManaged());
+    }
+
+    //! @brief Saving never stores the policy value as the user's.
+    void testSaveAccountKeepsAccountProxyUnderEnforcedPolicy()
+    {
+        installEnforcedDeviceProxy();
+        const auto account = addTestAccount(u"https://cloud.example.com"_s, u"bob"_s)->account();
+
+        AccountManager::instance()->saveAccount(account);
+
+        const auto settings = ConfigFile::settingsWithGroup(u"Accounts"_s);
+        settings->beginGroup(account->id());
+        QCOMPARE(settings->value(u"networkProxyType"_s).toInt(), int(QNetworkProxy::NoProxy));
+        QCOMPARE(settings->value(u"networkProxyHostName"_s).toString(), QString());
+        QCOMPARE(settings->value(u"networkProxyPort"_s).toInt(), 0);
+    }
+
+    //! @brief An account without a subscription must not keep enforced values alive.
+    void testCachedEnforcedValuesAreDroppedWhenNoAccountIsSubscribed()
+    {
+        ConfigFile config;
+        ServerManagedSettings cached;
+        cached.enforced = QVariantMap{{u"virtualFilesMode"_s, u"wincfapi"_s}};
+        config.setServerManagedSettings(cached);
+        QCOMPARE(config.serverManagedSettings().enforced.value(u"virtualFilesMode"_s).toString(), u"wincfapi"_s);
+
+        const auto account = addTestAccount(u"https://cloud.example.com"_s, u"carol"_s)->account();
+
+        // Capabilities without a subscription marker: they load, but the account is not subscribed.
+        account->setCapabilities(QVariantMap{{u"core"_s, QVariantMap{}}});
+        QVERIFY(!account->serverHasValidSubscription());
+
+        QVERIFY(ConfigFile().serverManagedSettings().enforced.isEmpty());
+    }
+
+    void restoresPublicShareLinkWithBasicCredentials()
+    {
+        const auto accountId = QStringLiteral("public-share");
+        const auto shareUrl = QStringLiteral("https://cloud.example/s/share-token");
+        const auto writeAccount = [&accountId, &shareUrl](const QString &authType, const QString &userKey) {
+            QSettings settings(ConfigFile().configFile(), QSettings::IniFormat);
+            settings.beginGroup(QStringLiteral("Accounts"));
+            settings.setValue(QStringLiteral("version"), accountSettingsVersion);
+            settings.beginGroup(accountId);
+            settings.setValue(QStringLiteral("version"), accountSettingsVersion);
+            settings.setValue(QStringLiteral("url"), shareUrl);
+            settings.setValue(QStringLiteral("authType"), authType);
+            settings.setValue(userKey, QStringLiteral("share-token"));
+            settings.setValue(QStringLiteral("dav_user"), QStringLiteral("share-token"));
+            settings.endGroup();
+            settings.endGroup();
+            settings.sync();
+        };
+
+        for (const auto &authType : {QStringLiteral("http"), QStringLiteral("webflow")}) {
+            AccountManager::instance()->shutdown();
+            QSettings settings(ConfigFile().configFile(), QSettings::IniFormat);
+            settings.clear();
+            settings.sync();
+
+            writeAccount(authType, authType == QStringLiteral("http") ? QStringLiteral("http_user") : QStringLiteral("webflow_user"));
+
+            QCOMPARE(AccountManager::instance()->restore(false), AccountManager::AccountsRestoreSuccess);
+            const auto accounts = AccountManager::instance()->accounts();
+            QCOMPARE(accounts.size(), 1);
+            QCOMPARE(accounts.first()->account()->credentials()->authType(), QStringLiteral("http"));
+            QVERIFY(accounts.first()->account()->isPublicShareLink());
+        }
+
+        AccountManager::instance()->shutdown();
+    }
+};
+
+QTEST_GUILESS_MAIN(TestAccountManager)
+#include "testaccountmanager.moc"

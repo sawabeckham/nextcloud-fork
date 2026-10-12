@@ -1,0 +1,201 @@
+/*
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+#ifndef MIRALL_FOLDERWIZARD_H
+#define MIRALL_FOLDERWIZARD_H
+
+#include <QWizard>
+#include <QNetworkReply>
+#include <QTimer>
+
+#include <memory>
+
+#include "folder.h"
+#include "accountfwd.h"
+
+#include "ui_folderwizardsourcepage.h"
+#include "ui_folderwizardtargetpage.h"
+
+class QCheckBox;
+class QLabel;
+
+namespace OCC {
+
+class SelectiveSyncWidget;
+
+namespace Utility
+{
+class MacSandboxPersistentAccess;
+}
+
+class ownCloudInfo;
+
+/**
+ * @brief The FormatWarningsWizardPage class
+ * @ingroup gui
+ */
+class FormatWarningsWizardPage : public QWizardPage
+{
+    Q_OBJECT
+protected:
+    [[nodiscard]] QString formatWarnings(const QStringList &warnings) const;
+};
+
+/**
+ * @brief Page to ask for the local source folder
+ * @ingroup gui
+ */
+class FolderWizardLocalPath : public FormatWarningsWizardPage
+{
+    Q_OBJECT
+public:
+    explicit FolderWizardLocalPath(const AccountPtr &account);
+    ~FolderWizardLocalPath() override;
+
+    [[nodiscard]] bool isComplete() const override;
+    void initializePage() override;
+    void cleanupPage() override;
+
+    void setFolderMap(const Folder::Map &fm) { _folderMap = fm; }
+
+    /** @brief Bookmark of the folder chosen in the picker, empty if the entered path differs from it. */
+    [[nodiscard]] QByteArray securityScopedBookmarkData() const;
+
+Q_SIGNALS:
+    void initialFolderSelectionCanceled();
+
+protected:
+    void changeEvent(QEvent *) override;
+
+protected Q_SLOTS:
+    void slotChooseLocalFolder();
+
+private:
+    friend class FolderWizardLocalPathTestAccess;
+
+    void changeStyle();
+    void applyChosenLocalFolder(const QString &localFolder, const QByteArray &bookmarkData, bool initialSelection);
+
+    Ui_FolderWizardSourcePage _ui{};
+    Folder::Map _folderMap;
+    AccountPtr _account;
+    bool _initialFolderSelection = true;
+    QString _chosenLocalFolder;
+    QByteArray _chosenLocalFolderBookmarkData;
+#ifdef Q_OS_MACOS
+    std::unique_ptr<Utility::MacSandboxPersistentAccess> _chosenLocalFolderAccess;
+#endif
+};
+
+
+/**
+ * @brief page to ask for the target folder
+ * @ingroup gui
+ */
+
+class FolderWizardRemotePath : public FormatWarningsWizardPage
+{
+    Q_OBJECT
+public:
+    explicit FolderWizardRemotePath(const AccountPtr &account);
+    ~FolderWizardRemotePath() override;
+
+    [[nodiscard]] bool isComplete() const override;
+
+    void initializePage() override;
+    void cleanupPage() override;
+
+protected Q_SLOTS:
+    void showWarn(const QString & = QString()) const;
+    void slotAddRemoteFolder();
+    void slotCreateRemoteFolder(const QString &);
+    void slotCreateRemoteFolderFinished();
+    void slotHandleMkdirNetworkError(QNetworkReply *);
+    void slotHandleLsColNetworkError(QNetworkReply *);
+    void slotUpdateDirectories(const QStringList &);
+    void slotGatherEncryptedPaths(const QString &, const QMap<QString, QString> &);
+    void slotRefreshFolders();
+    void slotItemExpanded(QTreeWidgetItem *);
+    void slotCurrentItemChanged(QTreeWidgetItem *);
+    void slotFolderEntryEdited(const QString &text);
+    void slotLsColFolderEntry();
+    void slotTypedPathFound(const QStringList &subpaths);
+
+protected:
+    void changeEvent(QEvent *) override;
+
+private Q_SLOTS:
+    void changeStyle();
+
+private:
+    LsColJob *runLsColJob(const QString &path);
+    void recursiveInsert(QTreeWidgetItem *parent, QStringList pathTrail, QString path);
+    bool selectByPath(QString path);
+    Ui_FolderWizardTargetPage _ui{};
+    bool _warnWasVisible = false;
+    AccountPtr _account;
+    QTimer _lscolTimer;
+    QStringList _encryptedPaths;
+};
+
+/**
+ * @brief The FolderWizardSelectiveSync class
+ * @ingroup gui
+ */
+class FolderWizardSelectiveSync : public QWizardPage
+{
+    Q_OBJECT
+public:
+    explicit FolderWizardSelectiveSync(const AccountPtr &account);
+    ~FolderWizardSelectiveSync() override;
+
+    bool validatePage() override;
+
+    void initializePage() override;
+    void cleanupPage() override;
+
+private Q_SLOTS:
+    void virtualFilesCheckboxClicked();
+
+private:
+    SelectiveSyncWidget *_selectiveSync;
+    QCheckBox *_virtualFilesCheckBox = nullptr;
+    QLabel *_virtualFilesManagedLabel = nullptr;
+};
+
+/**
+ * @brief The FolderWizard class
+ * @ingroup gui
+ */
+class FolderWizard : public QWizard
+{
+    Q_OBJECT
+public:
+    enum {
+        Page_Source,
+        Page_Target,
+        Page_SelectiveSync
+    };
+
+    explicit FolderWizard(AccountPtr account, QWidget *parent = nullptr);
+    ~FolderWizard() override;
+
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+
+    /** @brief Bookmark of the source folder chosen in the picker, see FolderWizardLocalPath. */
+    [[nodiscard]] QByteArray securityScopedBookmarkData() const;
+
+private:
+    FolderWizardLocalPath *_folderWizardSourcePage;
+    FolderWizardRemotePath *_folderWizardTargetPage = nullptr;
+    FolderWizardSelectiveSync *_folderWizardSelectiveSyncPage;
+};
+
+
+} // namespace OCC
+
+#endif

@@ -9,6 +9,11 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum OSX deployment version")
 endif()
 
+option(NEXTCLOUD_EXPERIMENTAL_HYBRID_SYNC "Experimental File Provider with classic background sync" OFF)
+if(NEXTCLOUD_EXPERIMENTAL_HYBRID_SYNC)
+    add_compile_definitions(NEXTCLOUD_EXPERIMENTAL_HYBRID_SYNC)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

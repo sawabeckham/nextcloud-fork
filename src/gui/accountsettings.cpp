@@ -8,6 +8,7 @@
 #include "accountsettings.h"
 #include "common/syncjournaldb.h"
 #include "common/syncjournalfilerecord.h"
+#include "common/hybridsyncpolicy.h"
 #include "qmessagebox.h"
 #include "ui_accountsettings.h"
 
@@ -2069,8 +2070,9 @@ void AccountSettings::updateSyncFoldersPanelVisibility()
     // Hide the classic sync settings while File Provider mode is on — except when this
     // account still has classic folders configured (mixed state): those must stay
     // visible, together with the banner asking the user to resolve the conflict.
-    _ui->syncFoldersPanel->setVisible(!fpModeOn || hasClassicFolders);
-    _ui->fileProviderConflictBanner->setVisible(fpModeOn && hasClassicFolders);
+    // Hybrid builds keep the panel and have no conflict to resolve.
+    _ui->syncFoldersPanel->setVisible(Utility::classicSyncAllowed(fpModeOn) || hasClassicFolders);
+    _ui->fileProviderConflictBanner->setVisible(Utility::classicSyncConflict(fpModeOn, hasClassicFolders));
 
     // The maintenance row (Reset File Provider Domain) only makes sense once this account
     // actually has a domain, i.e. File Provider mode is on and it is not stuck in the

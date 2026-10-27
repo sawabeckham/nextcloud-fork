@@ -22,12 +22,14 @@
 #include <syncengine.h>
 #include "updatee2eefolderusersmetadatajob.h"
 #include "settings/migration.h"
+#include "common/hybridsyncpolicy.h"
 
 #ifdef Q_OS_MACOS
 #include <CoreServices/CoreServices.h>
 #include "common/utility_mac_sandbox.h"
 #ifdef BUILD_FILE_PROVIDER_MODULE
 #include "macOS/fileprovider.h"
+#include "macOS/hybridsyncpaths.h"
 #endif
 #endif
 
@@ -298,6 +300,15 @@ void FolderMan::setupFoldersHelper(QSettings &settings, AccountStatePtr account,
             }
 #endif
 
+#if defined(BUILD_FILE_PROVIDER_MODULE)
+            if (Utility::hybridSyncEnabled && !Utility::hybridSyncPathAllowed(folderDefinition.localPath)) {
+                qCWarning(lcFolderMan) << "Skipping classic sync folder overlapping protected storage" << folderAlias;
+                _additionalBlockedFolderAliases.insert(folderAlias);
+                settings.endGroup();
+                continue;
+            }
+#endif
+
             auto defaultJournalPath = folderDefinition.defaultJournalPath(account->account());
 
             // Migration: Old settings don't have journalPath
@@ -339,15 +350,16 @@ void FolderMan::setupFoldersHelper(QSettings &settings, AccountStatePtr account,
                     qCWarning(lcFolderMan) << "Could not load plugin for mode" << folderDefinition.virtualFilesMode;
                 }
 
-                const auto folder = addFolderInternal(folderDefinition, account.data(), std::move(vfs));
+                if (const auto folder = addFolderInternal(folderDefinition, account.data(), std::move(vfs))) {
 #ifdef Q_OS_MACOS
-                if (securityScopedAccess) {
-                    folder->setSecurityScopedAccess(std::move(securityScopedAccess));
-                } else {
-                    folder->setNeedsSandboxBookmark(true);
-                }
+                    if (securityScopedAccess) {
+                        folder->setSecurityScopedAccess(std::move(securityScopedAccess));
+                    } else {
+                        folder->setNeedsSandboxBookmark(true);
+                    }
 #endif
-                folder->saveToSettings();
+                    folder->saveToSettings();
+                }
 
                 continue;
             }
@@ -1427,7 +1439,8 @@ Folder *FolderMan::addFolder(AccountState *accountState, const FolderDefinition 
 #ifdef BUILD_FILE_PROVIDER_MODULE
     // Classic sync folders and the File Provider integration are mutually exclusive:
     // the FinderSync extension cannot run while the File Provider extension is active.
-    if (ConfigFile().macFileProviderModeEnabled()) {
+    // Hybrid builds keep classic background sync without the FinderSync integration.
+    if (!Utility::classicSyncAllowed(ConfigFile().macFileProviderModeEnabled())) {
         qCWarning(lcFolderMan) << "Refusing to add classic sync folder: File Provider mode is enabled.";
         return nullptr;
     }
@@ -1446,6 +1459,14 @@ Folder *FolderMan::addFolder(AccountState *accountState, const FolderDefinition 
     auto securityScopedAccess = Utility::MacSandboxPersistentAccess::createValidFromBookmarkData(definition.securityScopedBookmarkData);
 #endif
 
+#if defined(BUILD_FILE_PROVIDER_MODULE)
+    // Check before the journal in the chosen folder is touched.
+    if (Utility::hybridSyncEnabled && !Utility::hybridSyncPathAllowed(definition.localPath)) {
+        qCWarning(lcFolderMan) << "Refusing classic sync folder overlapping protected storage";
+        return nullptr;
+    }
+#endif
+
     if (!ensureJournalGone(definition.absoluteJournalPath())) {
         return nullptr;
     }
@@ -1457,6 +1478,9 @@ Folder *FolderMan::addFolder(AccountState *accountState, const FolderDefinition 
     }
 
     auto folder = addFolderInternal(definition, accountState, std::move(vfs));
+    if (!folder) {
+        return nullptr;
+    }
 
     // Migration: The first account that's configured for a local folder shall
     // be saved in a backwards-compatible way.
@@ -1492,6 +1516,13 @@ Folder *FolderMan::addFolderInternal(
     AccountState *accountState,
     std::unique_ptr<Vfs> vfs)
 {
+#if defined(BUILD_FILE_PROVIDER_MODULE)
+    if (Utility::hybridSyncEnabled && !Utility::hybridSyncPathAllowed(folderDefinition.localPath)) {
+        qCWarning(lcFolderMan) << "Refusing classic sync folder overlapping protected storage";
+        return nullptr;
+    }
+#endif
+
     auto alias = folderDefinition.alias;
     int count = 0;
     while (folderDefinition.alias.isEmpty()
@@ -2040,6 +2071,14 @@ static QString canonicalPath(const QString &path)
 QPair<FolderMan::PathValidityResult, QString> FolderMan::checkPathValidityForNewFolder(const QString &path, const QUrl &serverUrl) const
 {
     QPair<FolderMan::PathValidityResult, QString> result;
+
+#if defined(BUILD_FILE_PROVIDER_MODULE)
+    if (Utility::hybridSyncEnabled && !Utility::hybridSyncPathAllowed(path)) {
+        result.first = FolderMan::PathValidityResult::ErrorContainedInFolder;
+        result.second = tr("Choose a folder outside Library and File Provider storage. Their parent folders cannot be synchronized either.");
+        return result;
+    }
+#endif
 
     const auto recursiveValidity = checkPathValidityRecursive(path);
     if (!recursiveValidity.isEmpty()) {

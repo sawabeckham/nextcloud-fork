@@ -24,6 +24,7 @@ namespace Mac {
  * exists, macOS activates the File Provider extension, which prevents the FinderSync
  * extension (used by classic sync folders) from running. The mode is therefore a single
  * switch for the whole client; when it is on, every configured account gets a domain.
+ * Hybrid builds keep classic background sync, without the FinderSync integration.
  */
 class FileProviderSettingsController : public QObject
 {
@@ -61,7 +62,7 @@ public Q_SLOTS:
     /**
      * @brief Switches the app-level File Provider mode. The caller is responsible for
      * having obtained explicit user confirmation. Enabling discards all classic sync
-     * folder configurations (files stay on disk) once every account's domain has been
+     * folder configurations (files stay on disk; hybrid builds keep them) once every account's domain has been
      * created successfully; disabling removes all domains without recreating any
      * classic sync folders.
      */

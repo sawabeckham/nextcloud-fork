@@ -5,6 +5,8 @@
 
 #include "fileprovidersettingscontroller.h"
 
+#include "common/hybridsyncpolicy.h"
+
 #include <QDesktopServices>
 #include <QDir>
 #include <QList>
@@ -653,7 +655,9 @@ void FileProviderSettingsController::applyFileProviderModeToAllAccounts(const bo
             if (enabled && capturedFailedAccounts.isEmpty()) {
                 // Only discard the classic sync folder configurations once every
                 // account's domain has verifiably been created.
-                controller->removeAllClassicSyncFolders();
+                if (!Utility::hybridSyncEnabled) {
+                    controller->removeAllClassicSyncFolders();
+                }
 
                 if (!capturedChangedAccounts.isEmpty()) {
                     QMessageBox::information(nullptr,
@@ -733,7 +737,7 @@ void FileProviderSettingsController::performStartupReconciliation()
     const auto folderMan = FolderMan::instance();
     const auto hasClassicFolders = folderMan && !folderMan->map().isEmpty();
 
-    if (fileProviderModeEnabled() && hasClassicFolders) {
+    if (Utility::classicSyncConflict(fileProviderModeEnabled(), hasClassicFolders)) {
         // App-level conflict: the File Provider extension and the FinderSync extension
         // (classic sync folders) cannot run at the same time. Let the user pick a side.
         showReconciliationDialog();

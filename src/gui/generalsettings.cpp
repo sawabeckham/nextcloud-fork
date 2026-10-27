@@ -5,6 +5,7 @@
  */
 
 #include "generalsettings.h"
+#include "common/hybridsyncpolicy.h"
 #include "ui_generalsettings.h"
 
 #include "accountmanager.h"
@@ -78,6 +79,11 @@ GeneralSettings::GeneralSettings(QWidget *parent)
 #if defined(BUILD_FILE_PROVIDER_MODULE)
     if (Mac::FileProvider::available() && !Theme::instance()->disableVirtualFilesSyncFolder()) {
         const auto fpSettingsController = Mac::FileProviderSettingsController::instance();
+        if (Utility::hybridSyncEnabled) {
+            _ui->fileProviderDescriptionLabel->setText(
+                tr("Experimental: File Provider and classic background sync are enabled together. Classic Finder badges and menus may be unavailable. "
+                   "Keep local sync folders outside File Provider storage."));
+        }
 
         // "clicked" rather than "toggled": only direct user interaction may open the
         // confirmation flow, never the programmatic setChecked in loadMiscSettings().
@@ -258,7 +264,7 @@ void GeneralSettings::confirmEnableFileProviderMode()
 
     auto text = tr("File Provider will be enabled for all accounts. Your files will appear in Finder under the \"Locations\" section. Accounts added later will also be set up as File Providers.");
 
-    if (!accountsWithClassicFolders.isEmpty()) {
+    if (!accountsWithClassicFolders.isEmpty() && !Utility::hybridSyncEnabled) {
         QStringList accountLines;
         for (const auto &accountName : std::as_const(accountsWithClassicFolders)) {
             accountLines.append(QStringLiteral("• ") + accountName);

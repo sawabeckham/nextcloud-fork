@@ -104,6 +104,7 @@ if [[ "${SKIP_EXTENSIONS:-}" == 1 ]]; then
 fi
 
 echo "• Сборка пакета"
+rm -rf "$BUILD_DIR/package"   # cmake --install не убирает файлы прошлых сборок
 cmake --install "$BUILD_DIR/client" > "$LOG/package.log" 2>&1 || { tail -n 30 "$LOG/package.log"; exit 1; }
 APP="$BUILD_DIR/package/Nextcloud Fork.app"
 [[ -d "$APP" ]] || { echo "Нет пакета: $APP"; exit 1; }

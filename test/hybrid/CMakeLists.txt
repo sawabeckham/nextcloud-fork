@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 cmake_minimum_required(VERSION 3.16)
 project(NextcloudForkPolicyTests LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_testing()
@@ -24,7 +27,6 @@ add_test(NAME MacRuntimeStaging COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOUR
 if(APPLE)
     find_package(Qt6 COMPONENTS Core QUIET)
     if(Qt6Core_FOUND)
-        enable_language(OBJCXX)
         add_executable(HybridSyncQtPathsTest qtpaths.cpp ../../src/common/utility_mac_sandbox.mm)
         target_include_directories(HybridSyncQtPathsTest PRIVATE ../../src)
         set_source_files_properties(../../src/common/utility_mac_sandbox.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")

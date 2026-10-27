@@ -80,6 +80,33 @@ cmake --install "$BUILD_DIR/client" > "$LOG/package.log" 2>&1 || { tail -n 30 "$
 APP="$BUILD_DIR/package/Nextcloud Fork.app"
 [[ -d "$APP" ]] || { echo "Нет пакета: $APP"; exit 1; }
 
+# cmake --install кладёт плагины VFS уже после macdeployqt, и они ссылаются на Qt из Homebrew:
+# переводим их на копии в Contents/Frameworks, иначе в процессе окажутся две Qt.
+for plugin in "$APP"/Contents/PlugIns/*.dylib(N); do
+  for dep in $(otool -L "$plugin" | tail -n +2 | awk '{print $1}' | grep "^$HB/"); do
+    if [[ "$dep" == *.framework/* ]]; then rel="${dep##*/lib/}"; else rel="${dep:t}"; fi
+    [[ -e "$APP/Contents/Frameworks/$rel" ]] || { echo "Нет в Contents/Frameworks: $rel (для ${plugin:t})"; exit 1; }
+    install_name_tool -change "$dep" "@executable_path/../Frameworks/$rel" "$plugin" 2>/dev/null
+  done
+  for rpath in $(otool -l "$plugin" | awk '/LC_RPATH/{getline; getline; print $2}' | grep -v "^@"); do
+    install_name_tool -delete_rpath "$rpath" "$plugin" 2>/dev/null
+  done
+  codesign --force --sign - "$plugin" 2>/dev/null
+done
+# Копии библиотек клиента в Contents/MacOS от cmake --install не используются (грузятся из Frameworks).
+rm -f "$APP"/Contents/MacOS/lib*.dylib
+# Проверка: ни один файл пакета не грузит библиотеки из Homebrew (собственный ID библиотеки не считается).
+brew_linked=()
+while IFS= read -r -d '' file; do
+  own_id="$(otool -D "$file" 2>/dev/null | tail -n +2)"
+  otool -L "$file" 2>/dev/null | tail -n +2 | awk '{print $1}' | grep -vxF "${own_id:-@none}" | grep -q "^$HB/" \
+    && brew_linked+=("${file#$APP/}")
+done < <(find "$APP" -type f \( -name "*.dylib" -o -perm +111 \) -print0)
+if (( ${#brew_linked} )); then
+  printf 'В пакете остались ссылки на Homebrew:\n'; printf '  %s\n' "${brew_linked[@]}"
+  exit 1
+fi
+
 if [[ "${NO_INSTALL:-}" == 1 ]]; then
   echo "Собрано: $APP"
   exit 0

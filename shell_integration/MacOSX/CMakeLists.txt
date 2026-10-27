@@ -25,11 +25,27 @@ if(APPLE)
     # then point the extension at an app group it does not own, while the client — which takes
     # the team from CMake — points at the right one, and the two could never reach each other.
 
+    set(NEXTCLOUD_XCODEBUILD xcodebuild)
+    if(NEXTCLOUD_FORK)
+        set(_fork_xcode_cache "${CMAKE_CURRENT_BINARY_DIR}/fork-cache")
+        file(MAKE_DIRECTORY "${_fork_xcode_cache}")
+        set(NEXTCLOUD_XCODEBUILD ${CMAKE_COMMAND} -E env
+            "CLANG_MODULE_CACHE_PATH=${_fork_xcode_cache}/clang"
+            "SWIFTPM_MODULECACHE_OVERRIDE=${_fork_xcode_cache}/swift"
+            xcodebuild
+            -packageCachePath "${_fork_xcode_cache}/packages"
+            -clonedSourcePackagesDirPath "${_fork_xcode_cache}/sources")
+        option(NEXTCLOUD_FORK_UNSIGNED "Compile the fork extensions without a runnable signature" OFF)
+        if(NEXTCLOUD_FORK_UNSIGNED)
+            list(APPEND NEXTCLOUD_XCODEBUILD "CODE_SIGNING_ALLOWED=NO" "CODE_SIGNING_REQUIRED=NO")
+        endif()
+    endif()
+
     # COMPILER_INDEX_STORE_ENABLE has to be forced off so the Realm package builds: the scheme
     # exports its index store settings but not INDEX_DATA_STORE_DIR, so clang gets a valueless
     # -index-store-path that eats realm-core's include path ('realm/array.hpp' not found).
     add_custom_target( mac_overlayplugin ALL
-        xcodebuild
+        ${NEXTCLOUD_XCODEBUILD}
         ARCHS=${CMAKE_OSX_ARCHITECTURES}
         ONLY_ACTIVE_ARCH=NO
         -project ${CMAKE_SOURCE_DIR}/shell_integration/MacOSX/NextcloudIntegration/NextcloudIntegration.xcodeproj
@@ -53,7 +69,7 @@ if(APPLE)
     set(OSX_FINDERSYNC_BROKER_TARGET "FinderSyncBroker")
 
     add_custom_target( mac_findersyncbroker ALL
-        xcodebuild
+        ${NEXTCLOUD_XCODEBUILD}
         ARCHS=${CMAKE_OSX_ARCHITECTURES}
         ONLY_ACTIVE_ARCH=NO
         -project ${CMAKE_SOURCE_DIR}/shell_integration/MacOSX/NextcloudIntegration/NextcloudIntegration.xcodeproj
@@ -71,7 +87,7 @@ if(APPLE)
 
     if (BUILD_FILE_PROVIDER_MODULE)
         add_custom_target( mac_fileproviderplugin ALL
-            xcodebuild
+            ${NEXTCLOUD_XCODEBUILD}
             ARCHS=${CMAKE_OSX_ARCHITECTURES}
             ONLY_ACTIVE_ARCH=NO
             -project ${CMAKE_SOURCE_DIR}/shell_integration/MacOSX/NextcloudIntegration/NextcloudIntegration.xcodeproj
@@ -90,7 +106,7 @@ if(APPLE)
             VERBATIM)
 
         add_custom_target( mac_fileprovideruiplugin ALL
-            xcodebuild
+            ${NEXTCLOUD_XCODEBUILD}
             ARCHS=${CMAKE_OSX_ARCHITECTURES}
             ONLY_ACTIVE_ARCH=NO
             -project ${CMAKE_SOURCE_DIR}/shell_integration/MacOSX/NextcloudIntegration/NextcloudIntegration.xcodeproj

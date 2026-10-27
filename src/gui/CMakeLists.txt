@@ -847,6 +847,8 @@ if(BUILD_OWNCLOUD_OSX_BUNDLE AND NOT BUILD_LIBRARIES_ONLY)
     )
 
     set(cmd_NAME ${APPLICATION_EXECUTABLE}cmd)
+    # Deploy the command-line executable only after it has been built.
+    add_dependencies(nextcloud nextcloudcmd)
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
         set(NO_STRIP "-no-strip")
@@ -855,17 +857,37 @@ if(BUILD_OWNCLOUD_OSX_BUNDLE AND NOT BUILD_LIBRARIES_ONLY)
     endif()
 
     add_custom_command(TARGET nextcloud POST_BUILD
+        # The GUI uses its install RPATH, so stage our libraries before Qt scans it.
+        COMMAND "${CMAKE_COMMAND}"
+        "-DINPUT=$<TARGET_FILE:nextcloudsync>"
+        "-DOUTPUT=$<TARGET_FILE_DIR:nextcloud>/../Frameworks/$<TARGET_SONAME_FILE_NAME:nextcloudsync>"
+        -P "${CMAKE_SOURCE_DIR}/cmake/modules/StageMacRuntime.cmake"
+        COMMAND "${CMAKE_COMMAND}"
+        "-DINPUT=$<TARGET_FILE:nextcloud_csync>"
+        "-DOUTPUT=$<TARGET_FILE_DIR:nextcloud>/../Frameworks/$<TARGET_SONAME_FILE_NAME:nextcloud_csync>"
+        -P "${CMAKE_SOURCE_DIR}/cmake/modules/StageMacRuntime.cmake"
+        COMMAND "${CMAKE_INSTALL_NAME_TOOL}"
+        -change "@rpath/$<TARGET_SONAME_FILE_NAME:nextcloudsync>"
+        "@executable_path/../Frameworks/$<TARGET_SONAME_FILE_NAME:nextcloudsync>"
+        -change "@rpath/$<TARGET_SONAME_FILE_NAME:nextcloud_csync>"
+        "@executable_path/../Frameworks/$<TARGET_SONAME_FILE_NAME:nextcloud_csync>"
+        "$<TARGET_FILE:nextcloud>"
+        COMMAND "${CMAKE_INSTALL_NAME_TOOL}"
+        -change "@rpath/$<TARGET_SONAME_FILE_NAME:nextcloud_csync>"
+        "@loader_path/$<TARGET_SONAME_FILE_NAME:nextcloud_csync>"
+        "$<TARGET_FILE_DIR:nextcloud>/../Frameworks/$<TARGET_SONAME_FILE_NAME:nextcloudsync>"
         COMMAND "${MACDEPLOYQT_EXECUTABLE}"
         "$<TARGET_FILE_DIR:nextcloud>/../.."
         -qmldir=${CMAKE_SOURCE_DIR}/src/gui
         -always-overwrite
-        -executable="$<TARGET_FILE_DIR:nextcloud>/${cmd_NAME}"
+        "-executable=$<TARGET_FILE:nextcloudcmd>"
         -libpath=${MACDEPLOYQT_LIB_DIR}
         -libpath=${BIN_OUTPUT_DIRECTORY}
         ${NO_STRIP}
         COMMAND "${CMAKE_COMMAND}"
         -E rm -rf "${BIN_OUTPUT_DIRECTORY}/${OWNCLOUD_OSX_BUNDLE}/Contents/PlugIns/bearer"
         COMMENT "Running macdeployqt..."
+        VERBATIM
     )
 endif()
 

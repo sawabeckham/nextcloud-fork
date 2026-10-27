@@ -6,7 +6,9 @@
 //   under the logo;
 // - theme/{colored,black,white}/nextcloudfork/state-*.svg (+ PNG sizes): menu bar state icons, the
 //   original glyph with a "fork" label below it. They stay square: Qt shows tray icons in a square
-//   NSStatusItem and scales wider images down.
+//   NSStatusItem and scales wider images down;
+// - shell_integration/.../FileProviderExt/Assets.xcassets/FileProviderForkSymbol.symbolset: the symbol Finder
+//   shows for the drive in "Locations", the Nextcloud logo symbol with the label below it.
 // The label is drawn as glyph outlines of the rounded system font, so the result does not depend on the
 // fonts available at build time. Run from the repository root: swift admin/fork/make-fork-icons.swift
 // (needs rsvg-convert from librsvg for the PNG sizes).
@@ -178,4 +180,88 @@ for (flavor, color) in labelColors.sorted(by: { $0.key < $1.key }) {
         }
     }
 }
+// MARK: - Finder "Locations" symbol
+
+let assets = "shell_integration/MacOSX/NextcloudIntegration/FileProviderExt/Assets.xcassets"
+let symbolSource = "\(assets)/FileProviderDomainSymbol.symbolset"
+let symbolTarget = "\(assets)/FileProviderForkSymbol.symbolset"
+// Glyph coordinates are relative to the baseline (y = 0, up is negative); the template's margin box spans
+// roughly y -95...24. The logo shrinks into the upper part, the label sits on the baseline.
+let symbolLogoScale: CGFloat = 0.9
+let symbolLogoTop: CGFloat = -90
+let symbolLabelWidth: CGFloat = 82
+
+/// Applies `transform` to every coordinate pair of a path that uses only absolute M, C and Z commands.
+func transformPath(_ d: String, _ transform: (CGPoint) -> CGPoint) -> String {
+    var result = ""
+    var number = ""
+    var numbers: [CGFloat] = []
+    func flushNumber() {
+        if let value = Double(number) { numbers.append(CGFloat(value)) }
+        number = ""
+    }
+    func flushPairs() {
+        flushNumber()
+        precondition(numbers.count % 2 == 0, "Odd number of coordinates in symbol path")
+        for index in stride(from: 0, to: numbers.count, by: 2) {
+            let point = transform(CGPoint(x: numbers[index], y: numbers[index + 1]))
+            result += (index == 0 ? "" : " ") + String(format: "%.4f %.4f", point.x, point.y)
+        }
+        numbers = []
+    }
+    for character in d {
+        switch character {
+        case "M", "C", "Z":
+            flushPairs()
+            result.append(character)
+        case "L", "H", "V", "Q", "S", "T", "A", "m", "c", "z", "l", "h", "v", "q", "s", "t", "a":
+            fatalError("Unsupported command \(character) in symbol path")
+        case "-":
+            flushNumber()
+            number.append(character)
+        case " ", ",":
+            flushNumber()
+        default:
+            number.append(character)
+        }
+    }
+    flushPairs()
+    return result
+}
+
+/// The bounding box of the coordinates of an M/C/Z path (control points included, close enough here).
+func pathBounds(_ d: String) -> CGRect {
+    var minX = CGFloat.infinity, minY = CGFloat.infinity, maxX = -CGFloat.infinity, maxY = -CGFloat.infinity
+    _ = transformPath(d) { point in
+        minX = min(minX, point.x); maxX = max(maxX, point.x); minY = min(minY, point.y); maxY = max(maxY, point.y)
+        return point
+    }
+    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+}
+
+var symbol = read("\(symbolSource)/FileProviderDomainSymbol.svg")
+let referenceWidth = labelPath(label, fontSize: 100, weight: .bold, originX: 0, baselineY: 0).width
+let symbolFontSize = 100 * symbolLabelWidth / referenceWidth
+for weight in ["Ultralight-S", "Regular-S", "Black-S"] {
+    guard let group = symbol.range(of: "<g id=\"\(weight)\""),
+          let dStart = symbol.range(of: " d=\"", range: group.upperBound..<symbol.endIndex),
+          let dEnd = symbol.range(of: "\"", range: dStart.upperBound..<symbol.endIndex)
+    else { fatalError("No \(weight) glyph in \(symbolSource)") }
+    let logo = String(symbol[dStart.upperBound..<dEnd.lowerBound])
+    let bounds = pathBounds(logo)
+    let centerX = bounds.midX
+    let scaledLogo = transformPath(logo) { point in
+        CGPoint(x: centerX + (point.x - centerX) * symbolLogoScale,
+                y: symbolLogoTop + (point.y - bounds.minY) * symbolLogoScale)
+    }
+    let text = labelPath(label, fontSize: symbolFontSize, weight: .bold,
+                         originX: centerX - symbolLabelWidth / 2, baselineY: 0)
+    // CoreText outlines may contain line and quadratic segments; the template accepts any path data.
+    symbol.replaceSubrange(dStart.upperBound..<dEnd.lowerBound, with: scaledLogo + text.path)
+}
+write(symbol, to: "\(symbolTarget)/FileProviderForkSymbol.svg")
+write(read("\(symbolSource)/Contents.json").replacingOccurrences(of: "FileProviderDomainSymbol.svg",
+                                                                  with: "FileProviderForkSymbol.svg"),
+      to: "\(symbolTarget)/Contents.json")
+
 print("Fork icons written.")

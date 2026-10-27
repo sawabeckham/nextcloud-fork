@@ -7,7 +7,7 @@
 		<key>CFBundlePrimaryIcon</key>
 		<dict>
 			<key>CFBundleSymbolName</key>
-			<string>cloud</string>
+			<string>$(OC_FILE_PROVIDER_SYMBOL:default=cloud)</string>
 		</dict>
 	</dict>
 	<key>CFBundleDisplayName</key>

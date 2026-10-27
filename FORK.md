@@ -39,11 +39,13 @@ SKIP_EXTENSIONS=1 ./build.sh     # только клиент, быстрее
 
 ## Подпись
 
-Клиент и расширение File Provider общаются через группу приложений `<TeamID>.site.manro.nextcloudfork`,
-поэтому им нужна подпись сертификатом «Apple Development» с Team ID. Сейчас сертификата нет
-(`security find-identity -v -p codesigning` → 0), поэтому сборка неподписанная и `./build.sh` ничего не ставит.
-Бесплатный Apple ID в Xcode (Settings → Accounts) даёт сертификат «Apple Development»; хватит ли его для
-File Provider, можно проверить только на деле. Дальше: `-DDEVELOPMENT_TEAM=<TeamID>` вместо `NEXTCLOUD_FORK_UNSIGNED`.
+`build.sh` подписывает пакет сертификатом «Apple Development» Personal Team Apple ID (`TEAM_ID`, по умолчанию
+`EW76LLFDSH`): порядок и флаги как в `admin/osx/mac-crafter` (изнутри наружу, hardened runtime, entitlements из сборки).
+Профиль подготовки не нужен: в entitlements нет ключей `com.apple.developer.*`, только песочница, сеть и группа
+приложений `EW76LLFDSH.site.manro.nextcloudfork`. Сертификат создаётся в Xcode → Settings → Apple Accounts →
+Personal Team → Manage Certificates → + → Apple Development. `UNSIGNED=1 ./build.sh` — без подписи.
+
+Подпись разработчика не нотаризована: на этом Mac приложение запускается, на другом Gatekeeper его не пустит.
 
 ## Обновление до новой версии Nextcloud
 
@@ -53,6 +55,10 @@ git rebase --onto v36.0.0 v35.0.0 fork
 ```
 
 ## История
+
+### 0.4 — 2026-10-28
+- Подпись Personal Team `EW76LLFDSH`: все 107 исполняемых файлов пакета, у клиента и расширений одна группа приложений.
+- Пакет ещё не запускался: работа File Provider с бесплатной командой и вместе с синхронизацией папок не проверена.
 
 ### 0.3 — 2026-10-27
 - Перенесено из Codex в Romanenko Sources как git-репозиторий: чистая основа v35.0.0 с GitHub, изменения форка

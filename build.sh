@@ -10,6 +10,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 BUILD_DIR="${BUILD_DIR:-$HOME/Library/Caches/RomanenkoSources/nextcloud-fork}"
+# Подпись: Personal Team Apple ID в Xcode (сертификат «Apple Development»). UNSIGNED=1 — собрать без подписи.
+TEAM_ID="${TEAM_ID:-EW76LLFDSH}"
+[[ "${UNSIGNED:-}" == 1 ]] && TEAM_ID=""
 BREW_DEPS=(cmake ninja pkgconf qtbase qtdeclarative qtsvg qt5compat qtwebsockets qttools qtshadertools qtimageformats
   qtkeychain karchive extra-cmake-modules libp11 librsvg openssl@3)
 KDSA_TAG=v1.2.1
@@ -29,6 +32,30 @@ export PKG_CONFIG_PATH="$HB/opt/openssl@3/lib/pkgconfig:$HB/lib/pkgconfig"
 export QT_QPA_PLATFORM=offscreen
 LOG="$BUILD_DIR/logs"
 mkdir -p "$LOG"
+
+IDENTITY=""
+if [[ -n "$TEAM_ID" ]]; then
+  # Сертификат выбирается по Team ID (поле OU), подпись — по SHA-1: имя «Apple Development: …» неоднозначно.
+  valid="$(security find-identity -v -p codesigning | awk '/"Apple Development: / {print $2}')"
+  certs="$(mktemp -d)"
+  security find-certificate -a -c "Apple Development" -p | awk -v dir="$certs" \
+    '/BEGIN CERT/ {n++} {print > (dir "/" n ".pem")}'
+  for pem in "$certs"/*.pem(N); do
+    sha="$(openssl x509 -in "$pem" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')"
+    if openssl x509 -in "$pem" -noout -subject -nameopt multiline | grep -q "organizationalUnitName *= *$TEAM_ID$" \
+        && grep -qx "$sha" <<< "$valid"; then
+      IDENTITY="$sha"
+      break
+    fi
+  done
+  rm -rf "$certs"
+  [[ -n "$IDENTITY" ]] || {
+    echo "Нет сертификата «Apple Development» команды $TEAM_ID."
+    echo "Xcode → Settings → Apple Accounts → Personal Team → Manage Certificates → + → Apple Development."
+    echo "Или UNSIGNED=1 ./build.sh — без подписи."
+    exit 1
+  }
+fi
 
 KDSA_PREFIX="$BUILD_DIR/deps/kdsingleapplication-$KDSA_TAG"
 if [[ ! -f "$KDSA_PREFIX/lib/cmake/KDSingleApplication-qt6/KDSingleApplication-qt6Config.cmake" ]]; then
@@ -50,7 +77,8 @@ ctest --test-dir "$BUILD_DIR/policy" --output-on-failure
 echo "• Настройка сборки"
 if ! cmake -S . -B "$BUILD_DIR/client" -G Ninja \
     -DNEXTCLOUD_FORK=ON -DNEXTCLOUD_EXPERIMENTAL_HYBRID_SYNC=ON \
-    -DNEXTCLOUD_FORK_UNSIGNED=ON -DBUILD_FILE_PROVIDER_MODULE=ON -DBUILD_UPDATER=OFF -DBUILD_TESTING=OFF \
+    -DNEXTCLOUD_FORK_UNSIGNED=ON -DDEVELOPMENT_TEAM="$TEAM_ID" \
+    -DBUILD_FILE_PROVIDER_MODULE=ON -DBUILD_UPDATER=OFF -DBUILD_TESTING=OFF \
     -DBUILD_OWNCLOUD_OSX_BUNDLE=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DMACOS_USE_ICON_COMPOSER=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="$KDSA_PREFIX;$HB;$HB/opt/openssl@3" \
@@ -107,11 +135,35 @@ if (( ${#brew_linked} )); then
   exit 1
 fi
 
+if [[ -n "$IDENTITY" ]]; then
+  # Порядок и флаги — как в admin/osx/mac-crafter (Signer.swift): изнутри наружу, внешняя подпись без --deep.
+  echo "• Подпись (команда $TEAM_ID)"
+  ENT="$BUILD_DIR/client/shell_integration/MacOSX"
+  sign() { codesign --force --timestamp --options=runtime --sign "$IDENTITY" "$@" >> "$LOG/sign.log" 2>&1 \
+    || { echo "Не подписалось: ${@[-1]}"; tail -n 5 "$LOG/sign.log"; exit 1; } }
+  : > "$LOG/sign.log"
+  for item in "$APP"/Contents/Library/LoginItems/*.app(N); do
+    sign --entitlements "$ENT/FinderSyncBroker.entitlements" "$item"
+  done
+  for appex in "$APP"/Contents/PlugIns/*.appex(N); do
+    for inner in "$appex"/Contents/Frameworks/*(N); do sign "$inner"; done
+    sign --entitlements "$ENT/${${appex:t}%.appex}.entitlements" "$appex"
+  done
+  for framework in "$APP"/Contents/Frameworks/*(N); do sign "$framework"; done
+  while IFS= read -r -d '' lib; do sign "$lib"; done \
+    < <(find "$APP/Contents" -name "*.dylib" -not -path "*/Frameworks/*" -not -path "*.appex/*" -print0)
+  for exe in "$APP"/Contents/MacOS/*(N); do
+    [[ "${exe:t}" == "Nextcloud Fork" ]] || sign "$exe"
+  done
+  sign --entitlements "$BUILD_DIR/client/admin/osx/macosx.entitlements" "$APP"
+  codesign --verify --deep --strict "$APP" >> "$LOG/sign.log" 2>&1 || { tail -n 10 "$LOG/sign.log"; exit 1; }
+fi
+
 if [[ "${NO_INSTALL:-}" == 1 ]]; then
   echo "Собрано: $APP"
   exit 0
 fi
 
-# Без подписи Apple Development расширение File Provider не загрузится: ставить пока рано.
-echo "Установка не делается: нужна подпись Apple Development (см. FORK.md). Собрано: $APP"
+# Совместная работа File Provider и синхронизации папок ещё не проверена на живом аккаунте: ставить пока рано.
+echo "Установка пока не делается (см. FORK.md). Собрано: $APP"
 exit 1

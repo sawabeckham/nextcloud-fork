@@ -161,4 +161,8 @@ if(NEXTCLOUD_FORK)
     if(DEVELOPMENT_TEAM STREQUAL "NKUJUXUJ3B")
         set(DEVELOPMENT_TEAM "" CACHE STRING "Apple Development Team ID for the fork" FORCE)
     endif()
+    # The original Nextcloud artwork with a "fork" label (admin/fork/make-fork-icons.swift):
+    # theme/colored/NextcloudFork-macOS-icon.svg and theme/*/nextcloudfork/state-*.svg.
+    set(APPLICATION_ICON_NAME "NextcloudFork-macOS")
+    set(MACOS_USE_ICON_COMPOSER OFF)
 endif()

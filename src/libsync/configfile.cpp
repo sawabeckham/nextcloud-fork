@@ -1235,6 +1235,10 @@ bool ConfigFile::monoIcons() const
 #ifdef Q_OS_MACOS
     // OEM themes are not obliged to ship mono icons
     monoDefault = QByteArrayLiteral("Nextcloud") == QByteArrayLiteral(APPLICATION_NAME);
+#ifdef NEXTCLOUD_FORK
+    // The fork ships the original mono icons with a "fork" label.
+    monoDefault = true;
+#endif
 #endif
     return settings.value(QLatin1String(monoIconsC), monoDefault).toBool();
 }

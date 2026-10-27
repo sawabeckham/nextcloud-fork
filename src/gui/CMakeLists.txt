@@ -18,6 +18,8 @@ endif()
 set(STATE_SUBDIR "")
 if(APPLICATION_NAME STREQUAL "Nextcloud" OR APPLICATION_NAME STREQUAL "NextcloudDev")
     set(STATE_SUBDIR "nextcloud/")
+elseif(NEXTCLOUD_FORK)
+    set(STATE_SUBDIR "nextcloudfork/")
 endif()
 
 # Embed the call-notification ringtone only on platforms that actually play

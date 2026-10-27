@@ -33,6 +33,9 @@ endif()
 set(BIN_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 include(${CMAKE_SOURCE_DIR}/NEXTCLOUD.cmake)
+if(NEXTCLOUD_FORK)
+    add_compile_definitions(NEXTCLOUD_FORK)
+endif()
 
 set(QT_VERSION_MAJOR "6")
 set(REQUIRED_QT_VERSION "6.10.0")

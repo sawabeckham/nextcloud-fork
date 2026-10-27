@@ -7,6 +7,7 @@
 
 #import <AppKit/AppKit.h>
 #import <FileProvider/FileProvider.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <QDir>
 #include <QLatin1StringView>
@@ -20,6 +21,7 @@
 #include "fileprovidersettingscontroller.h"
 #include "fileproviderutils.h"
 
+#include "common/forkdomaindisplayname.h"
 #include "gui/accountmanager.h"
 #include "libsync/account.h"
 
@@ -30,6 +32,23 @@ namespace OCC {
 Q_LOGGING_CATEGORY(lcMacFileProviderDomainManager, "nextcloud.gui.macfileproviderdomainmanager", QtInfoMsg)
 
 }
+
+namespace {
+
+/// The domain name shown in Finder: `<server> - <user>`, or only the server address in the fork.
+QString domainDisplayName(const OCC::AccountPtr &account)
+{
+#ifdef NEXTCLOUD_FORK
+    const auto host = account->url().host();
+    UTType * const hostExtensionType = [UTType typeWithFilenameExtension:host.section(QLatin1Char('.'), -1).toNSString()];
+    const auto hostEndsInPackageExtension = hostExtensionType && [hostExtensionType conformsToType:UTTypePackage];
+    return OCC::Utility::forkDomainDisplayName(host, account->url().port(), account->shortcutName(), hostEndsInPackageExtension);
+#else
+    return account->shortcutName();
+#endif
+}
+
+} // namespace
 
 namespace OCC {
 
@@ -342,7 +361,7 @@ public:
             }
 
             const auto currentDisplayName = QString::fromNSString(domain.displayName);
-            const auto desiredDisplayName = accountState->account()->shortcutName();
+            const auto desiredDisplayName = domainDisplayName(accountState->account());
 
             if (currentDisplayName == desiredDisplayName) {
                 continue;
@@ -392,7 +411,7 @@ public:
         // Domains registered with a stale display name (e.g. the legacy U+2024-escaped form, or
         // a name from before `prettyName()` was updated) are normalised on launch by
         // `reconcileDomainDisplayNames()`.
-        const auto domainDisplayName = account->shortcutName();
+        const auto displayName = domainDisplayName(account);
 
         if (!existingDomainId.isEmpty()) {
             const auto domains = getDomains();
@@ -410,7 +429,7 @@ public:
         }
 
         const auto domainId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        NSFileProviderDomain * const domain = [[NSFileProviderDomain alloc] initWithIdentifier:domainId.toNSString() displayName:domainDisplayName.toNSString()];
+        NSFileProviderDomain * const domain = [[NSFileProviderDomain alloc] initWithIdentifier:domainId.toNSString() displayName:displayName.toNSString()];
         domain.supportsSyncingTrash = YES;
 
         if (!addDomain(domain)) {

@@ -23,4 +23,8 @@ for extension in "$app"/Contents/PlugIns/*.appex; do
         echo "Nextcloud Fork: extension registration deferred: $extension"
     fi
 done
+# Launch only the installed bundle in the console user's session after registration.
+if ! run_as_user /usr/bin/open -a "$app"; then
+    echo 'Nextcloud Fork was installed, but could not be opened. Open it from Applications > RomanenkoApp.'
+fi
 exit 0

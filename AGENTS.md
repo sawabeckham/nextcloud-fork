@@ -288,7 +288,7 @@ Read doc/PROJECT_HANDOFF.md, doc/CURRENT_STATE.md, FORK.md and doc/DOCUMENTATION
 
 ## Owner release policy —03.11.2026 (replaces per-edit version bumps)
 
-Nextcloud Fork is a large, long-lived project. Accumulate work under Unreleased; keep the last released version in metadata until the owner explicitly requests a release. Installed release 0.6.6; owner authorized preparation of 0.6.7 on 2026-11-03. Metadata is now 0.6.7; do not increment again for candidate corrections. Owner requested opening Installer after preparation of 0.6.7; installed version is currently 0.6.6. Do not build, package, install, tag, deploy or publish during ordinary development. Diagnostic builds/tests are pre-authorized by the 2026-11-03 QA clarification below; release packaging, publication and replacement of installed apps still require the applicable owner command. Static checks that do not build artifacts are allowed. Candidate fixes within one release do not increment again. Preserve existing production/data boundaries. This overrides historical instructions to bump version after every edit.
+Nextcloud Fork is a large, long-lived project. Accumulate work under Unreleased; keep the last released version in metadata until the owner explicitly requests a release. Installed release 0.6.7; owner authorized preparation of 0.6.7 on 2026-11-03. Metadata is now 0.6.7; do not increment again for candidate corrections. Owner requested opening Installer after preparation of 0.6.7; installed version is currently 0.6.6. Do not build, package, install, tag, deploy or publish during ordinary development. Diagnostic builds/tests are pre-authorized by the 2026-11-03 QA clarification below; release packaging, publication and replacement of installed apps still require the applicable owner command. Static checks that do not build artifacts are allowed. Candidate fixes within one release do not increment again. Preserve existing production/data boundaries. This overrides historical instructions to bump version after every edit.
 
 Read [documentation index](doc/INDEX.md), [development/release procedure](doc/DEVELOPMENT.md), [architecture](doc/ARCHITECTURE.md), [decisions](doc/DECISIONS.md), [development log](doc/DEVELOPMENT_LOG.md), [third-party provenance](doc/THIRD_PARTY.md), and the current state/handoff when relevant. Keep this established doc/ structure rather than creating parallel docs/ copies.
 
@@ -301,3 +301,8 @@ For subsequent builds, installers must request a graceful exit of the app being 
 ## Diagnostic QA policy — 2026-11-03
 
 Owner permanently authorizes diagnostic builds and checks within the requested task without another question. This does not authorize release/publication/deployment or replacing the working app. After checking, gracefully close test programs, confirm their absence and remove temporary apps/binaries/raw logs/directories created only for that check. Preserve reproducible test sources and concise results in Git. Preserve working data, others' active artifacts and required input dependencies/reused build environment. Existing task-specific pauses remain in force.
+
+
+## Owner installer launch requirement — 2026-11-04
+
+Nextcloud Fork postinstall must launch the installed app after registration in the console user's session, using its fixed installed path, never as root. No session means defer to manual launch. Failure to open should explain manual recovery without failing an otherwise completed installation. Implemented under Unreleased0.6.8; do not claim existing PKG0.6.7 has this behavior or rebuild it in place.

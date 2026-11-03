@@ -14,3 +14,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 Новых внешних зависимостей и заимствованных фрагментов кода для local connectionName не добавлено. Работа использует существующие Account/QSettings/Qt Widgets и public NSFileProviderManager APIs; Apple API declarations не копировались как реализация. Ранее исследованный недокументированный naming plist key описан отдельно с доказательствами, без включения реализации Apple в исходники.
 
 При коммите AI-assisted content требуется Assisted-by с фактическим именем/моделью агента; Signed-off-by добавляет только человек. Текущий срез выполнялся Codex и делегированными GPT-6.1 Sol агентами; это не copyright attribution внешнему разработчику. Репозиторий origin — приватный sawabeckham/nextcloud-fork; публичных PR/issue/комментариев от имени владельца не отправлялось.
+
+
+Установщик0.6.6: новое graceful-quit поведение и тесты написаны в проекте, внешние фрагменты/зависимости не добавлены. Использованы существующий CLI Nextcloud Application::parseOptions(--quit), системные launchctl/sudo/pgrep/stat/id/sleep; прежние атрибуции Nextcloud/ownCloud в installer scripts сохранены. Новые test sources GPL-2.0-or-later/SPDX.

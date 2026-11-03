@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Текущее состояние nextcloud-fork
 
-Сверка 03.11.2026: ветка `fork`, исходники кандидата 0.6.5 зафиксированы в `97c9e25` (полный снимок ранее незакоммиченной базы 0.6.4 и новой функции). По прямой команде владельца «готовим релиз» метаданные повышены один раз до 0.6.5; основа остаётся Nextcloud 35.0.1. Установленная копия и receipt остаются 0.6.4. Новый редактор локального имени подключения, сохранение и согласование имени существующего File Provider domain собраны; CTest 118/118 и профиль 11/11 прошли. Статус финального PKG и ограничения — в последнем разделе этого файла. Прежние записи ниже являются датированной историей, а не текущим dirty state.
+Сверка03.11.2026: PKG0.6.6 собран и проверен, источник3b8fa8e, ветка fork. Metadata0.6.6/upstream35.0.1; установленная копия/receipt остаются0.6.4. Новое поведение установщика — штатный --quit и bounded wait30s перед заменой. Полная consuming build успешна; профиль12/12 и5 тестов preinstall прошли. PKG лежит в ~/Github_local/pkg, hash/ограничения в последнем разделе. Реальная установка и новое имя в Finder пока не проверены. Старые записи ниже — датированная история.
 Это датированный снимок; перед новой задачей сверить Git/PR и установленную копию.
 
 ## Карта кода и устройство
@@ -495,3 +495,14 @@ Legacy xcodebuild -target NextcloudDev не запускается для это
 ## 03.11.2026 — начата сборка0.6.6
 
 Владелец прямо написал «собери релиз». Metadata повышена один раз0.6.5→0.6.6; текущий этап включает только автоматический штатный выход установщика, текст приветствия и тесты. Используется готовая среда/cache; build.sh выполнит сборку, подпись и PKG в ~/Github_local/pkg. Установка не запускается. Результат ещё не заявляется; после завершения сверить payload и версии.
+
+
+## 03.11.2026 — релизный PKG0.6.6 собран и проверен
+
+Команда владельца: «собери релиз». Исходный снимок приложения/упаковщика `3b8fa8e`, функция автоматического выхода `00ccc2f`; после снимка менялась только документация. Metadata0.6.6 повышена один раз. `BUILD_DIR=<physical-cache>/validation-build-20261101/fork-0.6.1 KDSA_PREFIX=<cache>/deps/kdsingleapplication-v1.2.1 CLIENT_TESTING=ON ./build.sh` — exit0: consuming ARM64 main/extensions build(all), подпись, упаковка и доставка. Среда прежняя, зависимости не обновлялись. Основа35.0.1 сохранена; upstream35.0.2 не переносился.
+
+Артефакт `~/Github_local/pkg/Nextcloud-Fork-0.6.6-arm64.pkg`, 75 241 128 байт, SHA-256 `809ce7d70030161ad53ee00c728495d73c5014bfff58b7b15c6b2bd057d456a0`. Cache/shared copies совпадают. В shared folder остаются0.6.6 и0.6.5 по действующей current+previous retention; hash0.6.5 не изменён. Бандл Apple Development, TeamEW76LLFDSH; сам PKG без Developer ID Installer/нотаризации, как предыдущие локальные пакеты. `pkgutil --expand-full` + `codesign --verify --deep --strict` исходного и payload app — PASS; main executable arm64, CFBundleVersion35.0.1.66, short version fork0.6.6/build66, три appex build66/прежние IDs. Executable, Info, CodeResources, extension Info побайтно совпали. install-location `/Applications/RomanenkoApp`; naming Boolean true сохранён. Внутри PKG preinstall/postinstall побайтно совпадают с исходниками; preinstall содержит --quit.
+
+Проверки этого этапа: `python3 test/hybrid/test_installer_quit.py` —5/5 PASS; профиль build.sh —12/12 PASS9.56s (включает ForkInstallerQuit, реальную fixture упаковку и распаковку ForkInstaller). `sh -n` preinstall, Python py_compile и git diff --check — PASS. Новый shell/test код не меняет C++/Swift; clang-format/tidy для него неприменимы. Полный CTest118/118 и визуальные offscreen проверки редактора относятся к предыдущей0.6.5, не повторялись без функциональных изменений клиента. Нельзя приписывать их новый прогон0.6.6. Legacy NextcloudDev target, запускающий запись в /Applications, не использовался; реальная CMake consuming build успешна.
+
+Установка не выполнялась: installed Info35.0.1.64 и receipt0.6.4 подтверждены после упаковки. Новый скрипт покрыт изолированными тестами и действительно включён в PKG, но реальная root installation/автоматический выход в сеансе macOS ещё не проверены. Finder rename/end-to-end sync и старое recovery/NAS reconciliation по прежнему не проверены. Не делать косметический domain reset, не запускать staging production identity с пустыми settings. Следующий шаг — установка этого пакета по команде владельца и наблюдение graceful quit/receipt/новой подписи Finder. Установка не подразумевается подготовкой артефакта. Исходники/документация сохраняются в приватной origin/fork, публичных релизов/PR/тегов нет.

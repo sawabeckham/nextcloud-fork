@@ -8,9 +8,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased — целевая0.6.7
+## [0.6.7] — 2026-11-03, кандидат релиза
 
-- Переработан редактор имени Finder: широкое поле с подписью сверху, «Сохранить» непосредственно справа, подсказка и возврат к адресу под полем. Русские подписи нового блока и «Закрыть» следуют выбранному языку приложения. Compiled regression tests/визуальная проверка нового интерфейса ещё не выполнены.
+- Переработан редактор имени Finder: широкое поле с подписью сверху, «Сохранить» непосредственно справа, подсказка и возврат к адресу под полем. Русские подписи нового блока и «Закрыть» следуют выбранному языку приложения. Узкие GUI tests:10 passed,1 skipped (interactive preview). Русские render states проверены визуально; реальный native dark theme ещё не проверен.
 
 ## [0.6.6] — 2026-11-03, PKG подготовлен; не установлен
 

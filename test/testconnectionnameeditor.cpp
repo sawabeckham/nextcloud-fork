@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -63,6 +64,11 @@ private Q_SLOTS:
         if (outputPath.isEmpty()) {
             QSKIP("Set NEXTCLOUD_FORK_CONNECTION_NAME_RENDER_DIR for isolated widget render artifacts.");
         }
+        const auto previousLanguage = qApp->property("ui_lang");
+        const auto restoreLanguage = qScopeGuard([previousLanguage] {
+            qApp->setProperty("ui_lang", previousLanguage);
+        });
+        qApp->setProperty("ui_lang", "ru_RU");
         const auto outputDirectory = QDir(outputPath);
         QVERIFY(QDir().mkpath(outputDirectory.absolutePath()));
         const auto account = createAccount();

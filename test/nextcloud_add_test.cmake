@@ -128,3 +128,22 @@ macro(nextcloud_add_benchmark test_class)
     add_definitions(-DOWNCLOUD_BIN_PATH="${CMAKE_BINARY_DIR}/bin")
     set_target_properties(${OWNCLOUD_TEST_CLASS}Bench PROPERTIES FOLDER Tests/Benchmarks)
 endmacro()
+
+# The application plist template identifies every bundle as the real client.
+# Native services must see each test executable as a separate application.
+function(nextcloud_isolate_macos_test_bundles directory)
+    get_property(test_targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(test_target IN LISTS test_targets)
+        get_target_property(test_target_type "${test_target}" TYPE)
+        if(test_target_type STREQUAL "EXECUTABLE")
+            set_target_properties("${test_target}" PROPERTIES
+                MACOSX_BUNDLE_INFO_PLIST "${CMAKE_ROOT}/Modules/MacOSXBundleInfo.plist.in"
+                MACOSX_BUNDLE_GUI_IDENTIFIER "${APPLICATION_REV_DOMAIN}.tests.${test_target}"
+                MACOSX_BUNDLE_BUNDLE_NAME "${test_target}")
+        endif()
+    endforeach()
+    get_property(test_subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(test_subdirectory IN LISTS test_subdirectories)
+        nextcloud_isolate_macos_test_bundles("${test_subdirectory}")
+    endforeach()
+endfunction()

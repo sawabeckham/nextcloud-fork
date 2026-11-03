@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+if [ "${3:-/}" != / ]; then
+    echo 'Nextcloud Fork must be installed on the current startup volume.' >&2
+    exit 1
+fi
+if [ -L '/Applications/RomanenkoApp' ] || [ -L '/Applications/RomanenkoApp/Nextcloud Fork.app' ]; then
+    echo 'Refusing to install through a symbolic link.' >&2
+    exit 1
+fi
+# Do not replace a bundle while the client is using it, including a copy in the build cache.
+if /usr/bin/pgrep -x 'Nextcloud Fork' >/dev/null; then
+    echo 'Quit Nextcloud Fork using its menu, then run this installer again.' >&2
+    exit 1
+fi
+exit 0

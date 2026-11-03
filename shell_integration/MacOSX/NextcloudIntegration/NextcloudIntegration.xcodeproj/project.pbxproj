@@ -913,6 +913,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FileProviderExt/Info.plist;
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_PREPROCESSOR_DEFINITIONS = "$(inherited) OC_FILE_PROVIDER_HIDE_EXTENSION_NAME=$(OC_FILE_PROVIDER_HIDE_EXTENSION_NAME:default=0)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -958,6 +960,8 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FileProviderExt/Info.plist;
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_PREPROCESSOR_DEFINITIONS = "$(inherited) OC_FILE_PROVIDER_HIDE_EXTENSION_NAME=$(OC_FILE_PROVIDER_HIDE_EXTENSION_NAME:default=0)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1531,7 +1535,7 @@
 			repositoryURL = "https://github.com/claucambra/SuggestionsTextFieldKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
+				minimumVersion = 1.0.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

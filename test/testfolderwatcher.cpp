@@ -8,21 +8,21 @@
  * any purpose.
  */
 
+#include <QProcess>
 #include <QtTest>
 
-#include "folderwatcher.h"
 #include "common/utility.h"
+#include "folderwatcher.h"
 #include "logger.h"
+
+using namespace Qt::StringLiterals;
 
 void touch(const QString &file)
 {
 #ifdef Q_OS_WIN
     OCC::Utility::writeRandomFile(file);
 #else
-    QString cmd;
-    cmd = QStringLiteral("touch %1").arg(file);
-    qDebug() << "Command: " << cmd;
-    system(cmd.toLocal8Bit());
+    QCOMPARE(QProcess::execute(u"touch"_s, {file}), 0);
 #endif
 }
 
@@ -32,9 +32,7 @@ void mkdir(const QString &file)
     QDir dir;
     dir.mkdir(file);
 #else
-    QString cmd = QStringLiteral("mkdir %1").arg(file);
-    qDebug() << "Command: " << cmd;
-    system(cmd.toLocal8Bit());
+    QCOMPARE(QProcess::execute(u"mkdir"_s, {file}), 0);
 #endif
 }
 
@@ -44,9 +42,7 @@ void rmdir(const QString &file)
     QDir dir;
     dir.rmdir(file);
 #else
-    QString cmd = QStringLiteral("rmdir %1").arg(file);
-    qDebug() << "Command: " << cmd;
-    system(cmd.toLocal8Bit());
+    QCOMPARE(QProcess::execute(u"rmdir"_s, {file}), 0);
 #endif
 }
 
@@ -55,9 +51,7 @@ void rm(const QString &file)
 #ifdef Q_OS_WIN
     QFile::remove(file);
 #else
-    QString cmd = QStringLiteral("rm %1").arg(file);
-    qDebug() << "Command: " << cmd;
-    system(cmd.toLocal8Bit());
+    QCOMPARE(QProcess::execute(u"rm"_s, {file}), 0);
 #endif
 }
 
@@ -66,9 +60,7 @@ void mv(const QString &file1, const QString &file2)
 #ifdef Q_OS_WIN
     QFile::rename(file1, file2);
 #else
-    QString cmd = QStringLiteral("mv %1 %2").arg(file1, file2);
-    qDebug() << "Command: " << cmd;
-    system(cmd.toLocal8Bit());
+    QCOMPARE(QProcess::execute(u"mv"_s, {file1, file2}), 0);
 #endif
 }
 
@@ -131,7 +123,7 @@ public:
     int countFolders(const QString &path)
     {
         int n = 0;
-        const auto entryList = QDir(path).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        const auto entryList = QDir(path).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
         for (const auto &sub : entryList) {
             n += 1 + countFolders(path + '/' + sub);
         }
@@ -158,12 +150,10 @@ private Q_SLOTS:
         CHECK_WATCH_COUNT(countFolders(_rootPath) + 1);
     }
 
-    void testACreate() { // create a new file
+    void testACreate()
+    { // create a new file
         QString file(_rootPath + "/foo.txt");
-        QString cmd;
-        cmd = QStringLiteral("echo \"xyz\" > \"%1\"").arg(file);
-        qDebug() << "Command: " << cmd;
-        system(cmd.toLocal8Bit());
+        touch(file);
 
         QVERIFY(waitForPathChanged(file));
     }
@@ -275,6 +265,54 @@ private Q_SLOTS:
         QVERIFY(waitForPathChanged(dir));
     }
 
+    void testChangeDetected_movedInDirectoryWithSymlinkLoop_symlinkNotTraversed()
+    {
+#ifndef Q_OS_LINUX
+        QSKIP("Only the Linux watcher enumerates moved-in directories via changeDetected(QString)");
+#endif
+        // Build the tree outside of the watched folder and move it in, so the watcher
+        // receives a single event for the directory and enumerates its content.
+        const auto outside = QTemporaryDir{};
+        const auto source = outside.path() + "/withloop";
+        QVERIFY(QDir().mkpath(source + "/sub"));
+        Utility::writeRandomFile(source + "/sub/file.bin");
+        QVERIFY(QFile::link(QStringLiteral(".."), source + "/sub/loop"));
+
+        const auto moved = _rootPath + "/withloop";
+        mv(source, moved);
+        QVERIFY(QFileInfo(moved + "/sub/loop").isDir());
+
+        QVERIFY(waitForPathChanged(moved + "/sub/file.bin"));
+        QVERIFY(waitForPathChanged(moved + "/sub/loop"));
+        for (const auto &args : std::as_const(*_pathChangedSpy)) {
+            const auto path = args.first().toString();
+            QVERIFY2(!path.startsWith(moved + "/sub/loop/"), qPrintable(QStringLiteral("descended into symlink: %1").arg(path)));
+        }
+
+        _pathChangedSpy->clear();
+        QVERIFY(QDir(moved).removeRecursively());
+        QVERIFY(waitForPathChanged(moved));
+    }
+
+    void testChangeDetected_createdDirectorySymlink_notTraversedNorWatched()
+    {
+#ifndef Q_OS_LINUX
+        QSKIP("Directory symlinks are only created and watched this way on Linux");
+#endif
+        const auto target = QString{_rootPath + "/a2"};
+        const auto link = QString{_rootPath + "/a2link"};
+        QVERIFY(QFile::link(target, link));
+
+        QVERIFY(waitForPathChanged(link));
+        for (const auto &args : std::as_const(*_pathChangedSpy)) {
+            const auto path = args.first().toString();
+            QVERIFY2(!path.startsWith(link + "/"), qPrintable(QStringLiteral("descended into symlink: %1").arg(path)));
+        }
+        CHECK_WATCH_COUNT(countFolders(_rootPath) + 1);
+
+        QVERIFY(QFile::remove(link));
+    }
+
     void testDetectLockFiles()
     {
         QStringList listOfOfficeFiles = {QString(_rootPath + "/document.docx"), QString(_rootPath + "/document.odt")};
@@ -325,9 +363,6 @@ private Q_SLOTS:
         }
 
         // cleanup
-        for (const auto &officeLockFile : listOfOfficeLockFiles) {
-            rm(officeLockFile);
-        }
         for (const auto &officeFile : std::as_const(listOfOfficeFiles)) {
             rm(officeFile);
         }

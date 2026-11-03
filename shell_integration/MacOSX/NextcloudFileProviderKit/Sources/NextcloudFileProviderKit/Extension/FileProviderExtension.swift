@@ -18,6 +18,24 @@ import OSLog
     ///
     let domain: NSFileProviderDomain
 
+    let isAuxiliaryDomain: Bool
+
+    static func isAuxiliaryDomain(bundleIdentifier: String?, domainIdentifier: String) -> Bool {
+        bundleIdentifier == NEXTCLOUD_FORK_FILE_PROVIDER_EXTENSION_IDENTIFIER
+            && domainIdentifier == NEXTCLOUD_FORK_AUXILIARY_DOMAIN_IDENTIFIER
+    }
+
+    static func rootItemDisplayName(bundleIdentifier: String?, domainDisplayName: String) -> String? {
+        bundleIdentifier == NEXTCLOUD_FORK_FILE_PROVIDER_EXTENSION_IDENTIFIER ? domainDisplayName : nil
+    }
+
+    private var rootDisplayName: String? {
+        Self.rootItemDisplayName(bundleIdentifier: Bundle.main.bundleIdentifier, domainDisplayName: domain.displayName)
+    }
+
+    ///
+    /// The password of the account, cached for when the main app cannot hand it over.
+    ///
     let keychain: Keychain
     let log: any FileProviderLogging
     let logger: FileProviderLogger
@@ -73,6 +91,11 @@ import OSLog
     private var pendingAccount: Account?
     private var setupChain: Task<Void, Never> = Task {}
 
+    ///
+    /// Incremented by ``removeAccount()``, so setups queued or running before it neither store nor publish their account.
+    ///
+    private(set) var setupGeneration = 0
+
     // Waiters parked in `awaitAccount(…)` until `ncAccount` is published.
     private let accountReadyLock = NSLock()
     private var accountReadyWaiters = [UUID: CheckedContinuation<Void, Never>]()
@@ -90,13 +113,18 @@ import OSLog
     /// enumeration if they want for safety.
     lazy var config = FileProviderDomainDefaults(identifier: domain.identifier, log: log)
 
-    public required init(domain: NSFileProviderDomain) {
+    public required convenience init(domain: NSFileProviderDomain) {
+        self.init(domain: domain, bundleIdentifier: Bundle.main.bundleIdentifier)
+    }
+
+    init(domain: NSFileProviderDomain, bundleIdentifier: String?) {
         // The containing application must create a domain using
         // `NSFileProviderManager.add(_:, completionHandler:)`. The system will then launch the
         // application extension process, call `FileProviderExtension.init(domain:)` to instantiate
         // the extension for that domain, and call methods on the instance.
         self.domain = domain
-        manager = NSFileProviderManager(for: domain)
+        isAuxiliaryDomain = Self.isAuxiliaryDomain(bundleIdentifier: bundleIdentifier, domainIdentifier: domain.identifier.rawValue)
+        manager = isAuxiliaryDomain ? nil : NSFileProviderManager(for: domain)
 
         // Set up logging.
         log = FileProviderLog(fileProviderDomainIdentifier: domain.identifier)
@@ -106,16 +134,20 @@ import OSLog
         // Set up NextcloudKit.
         ncKit = NextcloudKit.shared
 
-        #if DEBUG
-            NKLogFileManager.configure(logLevel: .verbose)
-        #else
-            NKLogFileManager.configure(logLevel: .normal)
-        #endif
+        if !isAuxiliaryDomain {
+            #if DEBUG
+                NKLogFileManager.configure(logLevel: .verbose)
+            #else
+                NKLogFileManager.configure(logLevel: .normal)
+            #endif
 
-        logger.info("NextcloudKit logging configured.", [.url: NKLogFileManager.shared.currentLogFileURL()])
-        keychain = Keychain(log: log)
+            logger.info("NextcloudKit logging configured.", [.url: NKLogFileManager.shared.currentLogFileURL()])
+        }
+        keychain = Keychain(domain: domain, log: log)
         super.init()
-        observeBlockSync()
+        if !isAuxiliaryDomain {
+            observeBlockSync()
+        }
     }
 
     public func invalidate() {
@@ -125,6 +157,7 @@ import OSLog
     }
 
     func insertSyncAction(_ actionId: UUID) {
+        guard !isAuxiliaryDomain else { return }
         logger.debug("Inserting synchronization action.", [.item: actionId])
 
         actionsLock.lock()
@@ -135,6 +168,7 @@ import OSLog
     }
 
     func insertErrorAction(_ actionId: UUID) {
+        guard !isAuxiliaryDomain else { return }
         logger.debug("Inserting error action.", [.item: actionId])
 
         actionsLock.lock()
@@ -146,6 +180,7 @@ import OSLog
     }
 
     func removeSyncAction(_ actionId: UUID) {
+        guard !isAuxiliaryDomain else { return }
         logger.debug("Removing synchronization action.", [.item: actionId])
 
         actionsLock.lock()
@@ -159,6 +194,11 @@ import OSLog
     // MARK: - NSFileProviderReplicatedExtension protocol methods
 
     public func item(for identifier: NSFileProviderItemIdentifier, request _: NSFileProviderRequest, completionHandler: @Sendable @escaping (NSFileProviderItem?, Error?) -> Void) -> Progress {
+        if isAuxiliaryDomain {
+            completionHandler(identifier == .rootContainer ? AuxiliaryRootItem(log: log) : nil,
+                              identifier == .rootContainer ? nil : NSFileProviderError(.noSuchItem))
+            return Self.completedAuxiliaryProgress()
+        }
         logger.debug("Received request for item.", [.item: identifier])
 
         let progress = Progress(totalUnitCount: 1)
@@ -182,7 +222,7 @@ import OSLog
                 return
             }
 
-            if let item = await Item.storedItem(identifier: identifier, account: ncAccount, remoteInterface: ncKit, dbManager: dbManager, log: log), item.metadata.deleted == false {
+            if let item = await Item.storedItem(identifier: identifier, account: ncAccount, remoteInterface: ncKit, dbManager: dbManager, rootDisplayName: rootDisplayName, log: log), item.metadata.deleted == false {
                 progress.completedUnitCount = 1
                 completionHandler(item, nil)
             } else {
@@ -194,6 +234,10 @@ import OSLog
     }
 
     public func fetchContents(for itemIdentifier: NSFileProviderItemIdentifier, version requestedVersion: NSFileProviderItemVersion?, request _: NSFileProviderRequest, completionHandler: @Sendable @escaping (URL?, NSFileProviderItem?, Error?) -> Void) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(nil, nil, NSFileProviderError(.noSuchItem))
+            return Self.completedAuxiliaryProgress()
+        }
         guard !blockSync else {
             logger.info("Not fetching contents of item because synchronization is blocked.", [.item: itemIdentifier])
             completionHandler(nil, nil, NSFileProviderError(.serverUnreachable))
@@ -241,7 +285,7 @@ import OSLog
                 return
             }
 
-            guard let item = await Item.storedItem(identifier: itemIdentifier, account: ncAccount, remoteInterface: ncKit, dbManager: dbManager, log: log) else {
+            guard let item = await Item.storedItem(identifier: itemIdentifier, account: ncAccount, remoteInterface: ncKit, dbManager: dbManager, rootDisplayName: rootDisplayName, log: log) else {
                 logger.error("Not fetching contents for item because item was not found.", [.item: itemIdentifier])
                 completionHandler(nil, nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
                 insertErrorAction(actionId)
@@ -266,6 +310,10 @@ import OSLog
             NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?
         ) -> Void
     ) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(nil, [], false, CocoaError(.fileWriteNoPermission))
+            return Self.completedAuxiliaryProgress()
+        }
         guard !blockSync else {
             logger.info("Not creating item because synchronization is blocked.", [.item: itemTemplate.itemIdentifier, .name: itemTemplate.filename])
             completionHandler(itemTemplate, [], false, NSFileProviderError(.serverUnreachable))
@@ -347,6 +395,10 @@ import OSLog
         request: NSFileProviderRequest,
         completionHandler: @Sendable @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void
     ) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(nil, [], false, CocoaError(.fileWriteNoPermission))
+            return Self.completedAuxiliaryProgress()
+        }
         // An item was modified on disk, process the item's modification
         // TODO: Handle finder things like tags, other possible item changed fields
         guard !blockSync else {
@@ -391,6 +443,7 @@ import OSLog
                 account: ncAccount,
                 remoteInterface: ncKit,
                 dbManager: dbManager,
+                rootDisplayName: rootDisplayName,
                 log: log
             ) else {
                 logger.error("Not modifying item because it was not found.", [.item: identifier])
@@ -441,6 +494,10 @@ import OSLog
         request _: NSFileProviderRequest,
         completionHandler: @Sendable @escaping (Error?) -> Void
     ) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(CocoaError(.fileWriteNoPermission))
+            return Self.completedAuxiliaryProgress()
+        }
         guard !blockSync else {
             logger.info("Not deleting item because synchronization is blocked.", [.item: identifier])
             completionHandler(NSFileProviderError(.serverUnreachable))
@@ -481,6 +538,7 @@ import OSLog
                 account: ncAccount,
                 remoteInterface: ncKit,
                 dbManager: dbManager,
+                rootDisplayName: rootDisplayName,
                 log: log
             ) else {
                 logger.error("Not deleting item because it was not found.", [.item: identifier])
@@ -507,6 +565,12 @@ import OSLog
     }
 
     public func enumerator(for containerItemIdentifier: NSFileProviderItemIdentifier, request _: NSFileProviderRequest) throws -> NSFileProviderEnumerator {
+        if isAuxiliaryDomain {
+            guard containerItemIdentifier == .rootContainer || containerItemIdentifier == .workingSet else {
+                throw NSFileProviderError(.noSuchItem)
+            }
+            return AuxiliaryEnumerator(log: log)
+        }
         logger.debug("System requested enumerator.", [.item: containerItemIdentifier])
 
         // Refusing here is what stops remote changes arriving: the app discovers them and signals the working set, but the signal carries no data and reaches this extension as a request for an enumerator, so declining it declines both the push and the polling path.
@@ -538,6 +602,7 @@ import OSLog
     }
 
     public func materializedItemsDidChange(completionHandler: @escaping () -> Void) {
+        guard !isAuxiliaryDomain else { completionHandler(); return }
         guard let ncAccount else {
             logger.debug("Not purging stale local file metadatas because account not set up.")
             completionHandler()
@@ -576,6 +641,7 @@ import OSLog
     // MARK: - Helper functions
 
     func signalEnumerator(completionHandler: @Sendable @escaping (_ error: Error?) -> Void) {
+        guard !isAuxiliaryDomain else { completionHandler(nil); return }
         guard let manager else {
             logger.error("Cannot get file provider manager for domain. Cannot signal enumerator.")
             return
@@ -716,6 +782,10 @@ import OSLog
         userAgent: String = "Nextcloud-macOS/FileProviderExt",
         completionHandler: (@Sendable (NSError?) -> Void)? = nil
     ) {
+        guard !isAuxiliaryDomain else {
+            completionHandler?(NSFileProviderError(.notAuthenticated) as NSError)
+            return
+        }
         let account = Account(user: user, id: userId, serverUrl: serverUrl, password: password)
 
         logger.info("Setting up domain account for user: \(user), userId: \(userId), serverUrl: \(serverUrl), password: \(password.isEmpty ? "<empty>" : "<not-empty>"), ncKitAccount: \(account.ncKitAccount)")
@@ -755,6 +825,7 @@ import OSLog
 
         pendingAccount = account
         let previous = setupChain
+        let generation = setupGeneration
 
         let next = Task { [weak self] in
             _ = await previous.value
@@ -763,7 +834,7 @@ import OSLog
                 return
             }
 
-            await performSetup(account: account, userAgent: userAgent, completionHandler: completionHandler)
+            await performSetup(account: account, generation: generation, userAgent: userAgent, completionHandler: completionHandler)
             clearPendingAccount(matching: account)
         }
 
@@ -789,6 +860,61 @@ import OSLog
     }
 
     ///
+    /// Store the account for later access, unless ``removeAccount()`` superseded the setup started at `generation`.
+    ///
+    func storeAccount(_ account: Account, generation: Int) -> Bool {
+        guard !isAuxiliaryDomain else { return false }
+        setupLock.lock()
+        defer { setupLock.unlock() }
+
+        guard generation == setupGeneration else {
+            return false
+        }
+
+        config.serverUrl = account.serverUrl
+        config.user = account.username
+        config.userId = account.id
+        keychain.savePassword(account.password, for: account.username)
+
+        return true
+    }
+
+    ///
+    /// Publish the authenticated account, unless ``removeAccount()`` superseded the setup started at `generation`.
+    ///
+    func publishAccount(_ account: Account, generation: Int) -> Bool {
+        guard !isAuxiliaryDomain else { return false }
+        setupLock.lock()
+        defer { setupLock.unlock() }
+
+        guard generation == setupGeneration else {
+            return false
+        }
+
+        ncAccount = account
+
+        return true
+    }
+
+    ///
+    /// Forget the account and delete its stored password, superseding every setup queued or running until now.
+    ///
+    /// - Returns: `true` if no password of the domain is left in the keychain.
+    ///
+    @discardableResult
+    func removeAccount() -> Bool {
+        guard !isAuxiliaryDomain else { return true }
+        setupLock.lock()
+        defer { setupLock.unlock() }
+
+        setupGeneration += 1
+        pendingAccount = nil
+        ncAccount = nil
+
+        return keychain.deletePassword()
+    }
+
+    ///
     /// Runs the actual account setup work for one ``Account``.
     ///
     /// Must only be invoked from the ``setupChain`` serialization queue established by
@@ -796,14 +922,17 @@ import OSLog
     ///
     private func performSetup(
         account: Account,
+        generation: Int,
         userAgent: String,
         completionHandler: (@Sendable (NSError?) -> Void)?
     ) async {
         // Store account information independently from the main app for later access.
-        config.serverUrl = account.serverUrl
-        config.user = account.username
-        config.userId = account.id
-        keychain.savePassword(account.password, for: account.username, on: account.serverUrl)
+        guard storeAccount(account, generation: generation) else {
+            logger.info("Cancelling domain account setup because the account was removed meanwhile.")
+            completionHandler?(NSError(.missingAccountInformation))
+            return
+        }
+
         NextcloudKit.clearAccountErrorState(for: account.ncKitAccount)
 
         ncKit.appendSession(
@@ -848,7 +977,12 @@ import OSLog
         }
 
         await MainActor.run {
-            ncAccount = account
+            guard publishAccount(account, generation: generation) else {
+                logger.info("Not publishing the authenticated account because it was removed meanwhile.")
+                completionHandler?(NSError(.missingAccountInformation))
+                return
+            }
+
             let databaseManager = FilesDatabaseManager(
                 account: account,
                 fileProviderDomainIdentifier: domain.identifier,
@@ -878,6 +1012,7 @@ import OSLog
     ///   `timeoutNanoseconds`.
     ///
     func awaitAccount(timeoutNanoseconds: UInt64 = 10_000_000_000) async throws -> Account {
+        guard !isAuxiliaryDomain else { throw NSFileProviderError(.notAuthenticated) }
         if let ncAccount {
             return ncAccount
         }
@@ -940,6 +1075,7 @@ import OSLog
     }
 
     func updatedSyncStateReporting(oldActions: Set<UUID>) {
+        guard !isAuxiliaryDomain else { return }
         actionsLock.lock()
 
         guard oldActions.isEmpty != syncActions.isEmpty else {
@@ -978,6 +1114,7 @@ import OSLog
     /// "Some files could not be synced!" message. See
     /// https://github.com/nextcloud/desktop/issues/10053.
     func reportCurrentSyncState() {
+        guard !isAuxiliaryDomain else { return }
         actionsLock.lock()
         let syncing = !syncActions.isEmpty
         let failed = !errorActions.isEmpty

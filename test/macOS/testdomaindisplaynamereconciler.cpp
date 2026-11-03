@@ -257,6 +257,12 @@ private Q_SLOTS:
         QVERIFY(!Manager::isConnectionNameSupported(u"Documents.bundle"_s));
         QVERIFY(!Manager::isConnectionNameSupported(u" Documents.app  "_s));
         QVERIFY(!Manager::isConnectionNameSupported(u"Invalid/name"_s));
+        QVERIFY(!Manager::isConnectionNameSupported(u".app"_s));
+        QVERIFY(!Manager::isConnectionNameSupported(u"Documents.App"_s));
+        QVERIFY(!Manager::isConnectionNameSupported(u"Documents.pages"_s));
+        QVERIFY(!Manager::isConnectionNameSupported(u"Documents.numbers"_s));
+        QVERIFY(!Manager::isConnectionNameSupported(u"Documents.key"_s));
+        QVERIFY(Manager::isConnectionNameSupported(u"Documents.txt"_s));
     }
 #endif
 };

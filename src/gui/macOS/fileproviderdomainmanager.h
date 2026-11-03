@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <QObject>
 #include <QList>
+#include <QObject>
 
 #include "accountstate.h"
 
@@ -16,25 +16,30 @@
 struct NSFileProviderDomain;
 #endif
 
-namespace OCC {
+namespace OCC
+{
 
 class Account;
 
-namespace Mac {
+namespace Mac
+{
+
+class AuxiliaryDomainReconciler;
+class DomainDisplayNameReconciler;
 
 class FileProviderDomainManager : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit FileProviderDomainManager(QObject * const parent = nullptr);
+    explicit FileProviderDomainManager(QObject *const parent = nullptr);
     ~FileProviderDomainManager() override;
 
     /**
      * @brief Add a new file provider domain for the given account.
      * @return The raw identifier of the added domain as a string.
      */
-    QString addDomainForAccount(const OCC::AccountState * const accountState);
+    QString addDomainForAccount(const OCC::AccountState *const accountState);
 
     /**
      * @brief Remove all file provider domains managed by this application.
@@ -49,13 +54,19 @@ public:
     /**
      * @brief Reconcile registered file provider domain display names with the current account state.
      *
-     * For every registered domain whose `displayName` no longer matches the owning account's
-     * `Account::shortcutName()` (e.g. the legacy U+2024-escaped form left over from the prior
-     * fix for #7979, or a stale `prettyName()` snapshot), re-register the domain in place so the
-     * macOS-side metadata catches up. Safe to call on every launch — a no-op when names already
-     * match.
+     * The fork schedules bounded asynchronous updates of existing mapped domains, preserving
+     * identifiers and writable registration metadata. Missing domains are never created here.
      */
     void reconcileDomainDisplayNames();
+
+    /// Reject names which would make the Finder root a package. Empty selects the automatic name.
+    [[nodiscard]] static bool isConnectionNameSupported(const QString &name);
+    /// Inspect directory types as well as files sharing the same suffix.
+    [[nodiscard]] static bool hasPackageExtension(const QString &name);
+
+    /// Maintain the fork's hidden, accountless domain used for the single-account Finder label.
+    void requestAuxiliaryDomainReconciliation();
+    [[nodiscard]] static bool isAuxiliaryDomainIdentifier(const QString &identifier);
 
     /**
      * @brief Remove a file provider domain independent from an account.
@@ -67,7 +78,7 @@ public:
      * @brief Remove the file provider domain for the given account.
      * @return The path to the location where preserved dirty user data is stored, or an empty QString if none.
      */
-    QString removeDomainByAccount(const OCC::AccountState * const accountState);
+    QString removeDomainByAccount(const OCC::AccountState *const accountState);
 
     void start();
 
@@ -75,7 +86,7 @@ public:
 
     NSFileProviderDomain *domainForAccount(const OCC::Account *account) const;
 
-    void signalEnumeratorChanged(const OCC::Account * const account);
+    void signalEnumeratorChanged(const OCC::Account *const account);
 
     /**
      * @brief Get the user-visible URL for a file provider domain's root container.
@@ -91,7 +102,8 @@ public:
     void openFileViewerForDomainIdentifier(const QString &domainIdentifier) const;
 
     /**
-     * @brief Tell the system that the previously-returned `NSFileProviderError.insufficientQuota` error no longer applies and signal an enumeration of the working set so the system retries refused uploads.
+     * @brief Tell the system that the previously-returned `NSFileProviderError.insufficientQuota` error no longer applies and signal an enumeration of the
+     * working set so the system retries refused uploads.
      *
      * Implements the documented contract of
      * `NSFileProviderManager.signalErrorResolved(_:completionHandler:)` followed by
@@ -111,14 +123,19 @@ public Q_SLOTS:
      */
     void slotHandleFileIdsChanged(const OCC::Account *account, const QList<qint64> &fileIds);
 
+Q_SIGNALS:
+    void domainDisplayNameUpdateFailed(const QString &accountId, const QString &error);
+
 private Q_SLOTS:
-    void disconnectFileProviderDomainForAccount(const OCC::AccountState * const accountState, const QString &reason);
-    void reconnectFileProviderDomainForAccount(const OCC::AccountState * const accountState);
-    void slotAccountStateChanged(const OCC::AccountState * const accountState);
+    void disconnectFileProviderDomainForAccount(const OCC::AccountState *const accountState, const QString &reason);
+    void reconnectFileProviderDomainForAccount(const OCC::AccountState *const accountState);
+    void slotAccountStateChanged(const OCC::AccountState *const accountState);
 
 private:
     class MacImplementation;
     std::unique_ptr<MacImplementation> d;
+    std::unique_ptr<AuxiliaryDomainReconciler> _auxiliaryDomainReconciler;
+    std::unique_ptr<DomainDisplayNameReconciler> _domainDisplayNameReconciler;
 };
 
 } // namespace Mac

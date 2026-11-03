@@ -12,6 +12,8 @@
 	</dict>
 	<key>CFBundleDisplayName</key>
 	<string>$(OC_APPLICATION_NAME) File Provider</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>$(OC_APPLICATION_NAME) File Provider needs access to your local network to connect to Nextcloud servers hosted there.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -19,6 +21,10 @@
 	</dict>
 	<key>NSExtension</key>
 	<dict>
+#if OC_FILE_PROVIDER_HIDE_EXTENSION_NAME
+		<key>NSFileProviderHideExtensionName</key>
+		<true/>
+#endif
 		<key>NSFileProviderDecorations</key>
 		<array>
 			<dict>

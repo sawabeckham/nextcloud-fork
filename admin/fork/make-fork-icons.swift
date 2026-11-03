@@ -18,6 +18,23 @@ import Foundation
 
 let label = "fork"
 
+// Recolor only Nextcloud's blue gradient; status colors and monochrome glyphs keep their meaning.
+func forkBlue(_ svg: String) -> String {
+    let palette = ["#1CB3FF": "#4295F5", "#0088CC": "#145CC5", "#1CAFFF": "#4295F5", "#0082C9": "#145CC5"]
+    return palette.reduce(svg) { result, entry in
+        result.replacingOccurrences(of: entry.key, with: entry.value, options: .caseInsensitive)
+    }
+}
+
+if CommandLine.arguments.contains("--test-palette") {
+    precondition(forkBlue("#1CB3FF #0088CC #1cafff #0082c9") == "#4295F5 #145CC5 #4295F5 #145CC5")
+    precondition(forkBlue("#DB0606 #A37200 #FFF #000 #fff #000000") == "#DB0606 #A37200 #FFF #000 #fff #000000")
+    precondition(forkBlue("") == "")
+    precondition(forkBlue(forkBlue("#0088CC")) == "#145CC5")
+    print("Fork palette tests passed")
+    exit(0)
+}
+
 /// SVG path data of `text` set in the rounded system font, with the baseline at `baselineY` and the
 /// horizontal start at `originX` (SVG coordinates, y pointing down). Returns the path and its advance width.
 func labelPath(_ text: String, fontSize: CGFloat, weight: NSFont.Weight, originX: CGFloat, baselineY: CGFloat)
@@ -111,7 +128,7 @@ let logoCenterY = 410
 let appLabel = labelPath(label, fontSize: 210, weight: .bold, originX: 0, baselineY: 790)
 let appLabelPath = labelPath(label, fontSize: 210, weight: .bold, originX: 512 - appLabel.width / 2, baselineY: 790).path
 
-var appIcon = read(appIconSource).replacingOccurrences(of: "cy=\"512\"", with: "cy=\"\(logoCenterY)\"")
+var appIcon = forkBlue(read(appIconSource)).replacingOccurrences(of: "cy=\"512\"", with: "cy=\"\(logoCenterY)\"")
 let appLabelMarkup = """
         <g
             id="fork-label-shadow"
@@ -145,7 +162,8 @@ for (flavor, color) in labelColors.sorted(by: { $0.key < $1.key }) {
         .filter { $0.hasPrefix("state-") && $0.hasSuffix(".svg") }
         .sorted()
     for state in states {
-        let source = read("\(sourceDir)/\(state)")
+        let original = read("\(sourceDir)/\(state)")
+        let source = flavor == "colored" ? forkBlue(original) : original
         guard let rootEnd = source.range(of: ">", range: source.range(of: "<svg")!.upperBound..<source.endIndex),
               let closing = source.range(of: "</svg>", options: .backwards)
         else { fatalError("Unexpected SVG in \(sourceDir)/\(state)") }

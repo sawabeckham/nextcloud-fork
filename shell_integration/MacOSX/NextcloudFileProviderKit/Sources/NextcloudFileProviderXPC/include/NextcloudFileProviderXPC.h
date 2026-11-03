@@ -8,5 +8,6 @@
 
 #import "AppProtocol.h"
 #import "ClientCommunicationProtocol.h"
+#import "ForkFileProviderDomain.h"
 
 #endif /* NextcloudFileProviderXPC_h */

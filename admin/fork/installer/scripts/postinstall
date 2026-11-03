@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+# SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+# SPDX-FileCopyrightText: 2015 ownCloud GmbH
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Registration follows admin/osx/post_install.sh.cmake: use the console user's registry.
+
+app='/Applications/RomanenkoApp/Nextcloud Fork.app'
+console_user=$(/usr/bin/stat -f%Su /dev/console)
+console_uid=$(/usr/bin/id -u "$console_user" 2>/dev/null)
+if [ -z "$console_uid" ] || [ "$console_uid" = 0 ] || [ "$console_user" = loginwindow ]; then
+    echo 'Nextcloud Fork: no console user; registration will happen on first launch.'
+    exit 0
+fi
+run_as_user() {
+    /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" "$@"
+}
+if ! run_as_user /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"; then
+    echo 'Nextcloud Fork: LaunchServices registration deferred until first launch.'
+fi
+for extension in "$app"/Contents/PlugIns/*.appex; do
+    if ! run_as_user /usr/bin/pluginkit -a "$extension"; then
+        echo "Nextcloud Fork: extension registration deferred: $extension"
+    fi
+done
+exit 0

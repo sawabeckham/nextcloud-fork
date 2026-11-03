@@ -6,6 +6,10 @@ import OSLog
 
 extension FileProviderExtension: NSFileProviderCustomAction {
     public func performAction(identifier actionIdentifier: NSFileProviderExtensionActionIdentifier, onItemsWithIdentifiers itemIdentifiers: [NSFileProviderItemIdentifier], completionHandler: @Sendable @escaping ((any Error)?) -> Void) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(CocoaError(.fileWriteNoPermission))
+            return Self.completedAuxiliaryProgress()
+        }
         switch actionIdentifier {
             case .fileActions:
                 guard let itemIdentifier = itemIdentifiers.first else {

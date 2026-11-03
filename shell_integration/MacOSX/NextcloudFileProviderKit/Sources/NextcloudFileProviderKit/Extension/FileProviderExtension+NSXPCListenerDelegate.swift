@@ -6,6 +6,7 @@ import NextcloudFileProviderXPC
 
 extension FileProviderExtension: NSXPCListenerDelegate {
     public func listener(_: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
+        guard !isAuxiliaryDomain else { return false }
         logger.info("Listener should accept new connection...")
 
         newConnection.exportedInterface = NSXPCInterface(with: ClientCommunicationProtocol.self)

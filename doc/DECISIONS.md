@@ -15,6 +15,6 @@ Nextcloud Fork — крупный продукт. Сохранять после�
 
 Finder получает имя существующего mapped domain с прежним ID; reset/remove/recreate ради косметики запрещены. Native API умеет только повторный addDomain по ID, поэтому нужны проверки mapping, timeout и поздних callback; собственные create/remove/rename сериализованы NativeDomainMutationQueue с fresh query внутри fence. Внешнее конкурентное удаление и поздний неизвестный native результат отдельно проверить до выпуска. Сохранённую helper registration0.6.3 пока не удалять в рамках этой функции.
 
-# # Прежние решения
+## Прежние решения
 
 Имя приложения Nextcloud Fork сохранить; hostname-only проверен в0.6.4. Swift/native rewrite без Qt отложен владельцем. Подробные альтернативы SFL, системные naming flags и helper-domain hypothesis остаются в MACOS_FINDER_LOCATION_NAMING.md. Данные, сохранённые после test identity incident01.11, не удалять/не сливать без отдельной проверки; real-data reconciliation не завершена.

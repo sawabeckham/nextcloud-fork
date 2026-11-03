@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <deque>
+#include <future>
 #include <mutex>
 #include <utility>
 
@@ -65,6 +66,23 @@ void NativeDomainMutationQueue::enqueue(Operation operation)
         _state->active = true;
     }
     _state->start(std::move(operation));
+}
+
+void NativeDomainMutationQueue::enqueueAndWait(Operation operation)
+{
+    const auto completion = std::make_shared<std::promise<void>>();
+    auto result = completion->get_future();
+    enqueue([operation = std::move(operation), completion](Finished finished) {
+        const auto completed = std::make_shared<std::atomic_bool>(false);
+        operation([finished, completion, completed] {
+            if (completed->exchange(true)) {
+                return;
+            }
+            finished();
+            completion->set_value();
+        });
+    });
+    result.wait();
 }
 
 void NativeDomainMutationQueue::updateExisting(Query query, Completion completion)

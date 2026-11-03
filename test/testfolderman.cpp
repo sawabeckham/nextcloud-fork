@@ -13,15 +13,16 @@
 #include <QtTest>
 
 #include "QtTest/qtestcase.h"
-#include "common/utility.h"
-#include "folderman.h"
 #include "account.h"
 #include "accountstate.h"
-#include <accountmanager.h>
+#include "common/hybridsyncpolicy.h"
+#include "common/utility.h"
 #include "configfile.h"
+#include "folderman.h"
 #include "socketapi/socketapi.h"
 #include "syncenginetestutils.h"
 #include "testhelper.h"
+#include <accountmanager.h>
 
 #ifdef Q_OS_MACOS
 #include "common/utility_mac_sandbox.h"
@@ -513,8 +514,10 @@ private Q_SLOTS:
 
             auto journal = folder->journalDb();
             for (const auto &fileId : fileIds) {
+                static int lastInode = 0;
                 SyncJournalFileRecord record;
                 record._fileId = u"%1oc123xyz987e"_s.arg(fileId, 8, 10, '0'_L1).toLocal8Bit();
+                record._inode = ++lastInode;
                 record._modtime = QDateTime::currentSecsSinceEpoch();
                 record._path = u"item%1"_s.arg(fileId).toLocal8Bit();
                 record._type = ItemTypeFile;
@@ -645,12 +648,11 @@ private Q_SLOTS:
 
         for (const auto state : disconnectedStates) {
             accountState->setStateForTesting(state);
-            QVERIFY2(!FolderMan::canPollFileProviderEtag(*accountState),
-                qPrintable(AccountState::stateString(state)));
+            QVERIFY2(!FolderMan::canPollFileProviderEtag(*accountState), qPrintable(AccountState::stateString(state)));
         }
     }
 
-    void testAddFolderRefusedWhenFileProviderModeEnabled()
+    void testAddFolderFollowsFileProviderPolicy()
     {
         FolderMan::resetInstance();
         _fm = FolderMan::instance();
@@ -663,15 +665,17 @@ private Q_SLOTS:
         auto account = Account::create();
         account->setCredentials(new FakeCredentials{new FakeQNAM({})});
         account->setUrl(QUrl(QStringLiteral("http://example.de")));
-        auto accountState = new FakeAccountState(account);
+        const auto accountState = AccountStatePtr(new FakeAccountState(account));
 
-        // Classic sync folders and File Provider mode are mutually exclusive.
         ConfigFile().setMacFileProviderModeEnabled(true);
-        QVERIFY(!FolderMan::instance()->addFolder(accountState, folderDefinition(dir.path() + QStringLiteral("/folder1"))));
+        const auto added = FolderMan::instance()->addFolder(accountState.data(), folderDefinition(dir.path() + u"/folder1"_s));
+        QCOMPARE(bool(added), Utility::hybridSyncEnabled);
+        QCOMPARE(FolderMan::instance()->map().count(), Utility::hybridSyncEnabled ? 1 : 0);
+        FolderMan::instance()->unloadAndDeleteAllFolders();
         QCOMPARE(FolderMan::instance()->map().count(), 0);
 
         ConfigFile().setMacFileProviderModeEnabled(false);
-        QVERIFY(FolderMan::instance()->addFolder(accountState, folderDefinition(dir.path() + QStringLiteral("/folder1"))));
+        QVERIFY(FolderMan::instance()->addFolder(accountState.data(), folderDefinition(dir.path() + QStringLiteral("/folder1"))));
         QCOMPARE(FolderMan::instance()->map().count(), 1);
 
         FolderMan::instance()->unloadAndDeleteAllFolders();

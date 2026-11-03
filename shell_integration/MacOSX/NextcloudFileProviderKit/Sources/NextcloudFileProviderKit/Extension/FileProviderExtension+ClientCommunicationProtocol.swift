@@ -6,6 +6,7 @@ import NextcloudFileProviderXPC
 
 extension FileProviderExtension: ClientCommunicationProtocol {
     public func hasDirtyUserData(completionHandler: ((Bool) -> Void)?) {
+        guard !isAuxiliaryDomain else { completionHandler?(false); return }
         logger.debug("Dirty user data check is requested.")
 
         guard let completionHandler else {
@@ -26,27 +27,39 @@ extension FileProviderExtension: ClientCommunicationProtocol {
     }
 
     public func getFileProviderDomainIdentifier(completionHandler: @escaping (String?, Error?) -> Void) {
+        guard !isAuxiliaryDomain else { completionHandler(nil, NSFileProviderError(.noSuchItem)); return }
         logger.debug("Returning file provider domain identifier.", [.domain: domain.identifier.rawValue])
         completionHandler(domain.identifier.rawValue, nil)
     }
 
     public func configureAccount(withUser user: String, userId: String, serverUrl: String, password: String, userAgent: String) {
+        guard !isAuxiliaryDomain else { return }
         logger.info("Received account to configure.")
         setupDomainAccount(user: user, userId: userId, serverUrl: serverUrl, password: password, userAgent: userAgent)
     }
 
     public func removeAccountConfig() {
+        guard !isAuxiliaryDomain else { return }
         logger.info("Received request to remove account data.")
         dbManager = nil
-        ncAccount = nil
+        removeAccount()
+    }
+
+    public func deletePassword(completionHandler: ((Bool) -> Void)?) {
+        guard !isAuxiliaryDomain else { completionHandler?(true); return }
+        logger.info("Received request to delete the stored password.")
+        let deleted = removeAccount()
+        completionHandler?(deleted)
     }
 
     public func setIgnoreList(_ ignoreList: [String]) {
+        guard !isAuxiliaryDomain else { return }
         ignoredFiles = IgnoredFilesMatcher(ignoreList: ignoreList, log: log)
         logger.info("Ignore list updated.")
     }
 
     public func processFileIdsChanged(_ fileIds: [NSNumber], completionHandler: ((Bool) -> Void)?) {
+        guard !isAuxiliaryDomain else { completionHandler?(true); return }
         guard let completionHandler else {
             logger.error("Cannot process file ID changes, completion handler is nil.")
             return

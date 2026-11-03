@@ -36,7 +36,8 @@ if(APPLE)
             -packageCachePath "${_fork_xcode_cache}/packages"
             -clonedSourcePackagesDirPath "${_fork_xcode_cache}/sources")
         # Finder shows this symbol for the drive in "Locations" (admin/fork/make-fork-icons.swift).
-        list(APPEND NEXTCLOUD_XCODEBUILD "OC_FILE_PROVIDER_SYMBOL=FileProviderForkSymbol")
+        list(APPEND NEXTCLOUD_XCODEBUILD "OC_FILE_PROVIDER_SYMBOL=FileProviderForkSymbol"
+            "OC_FILE_PROVIDER_HIDE_EXTENSION_NAME=1")
         option(NEXTCLOUD_FORK_UNSIGNED "Compile the fork extensions without a runnable signature" OFF)
         if(NEXTCLOUD_FORK_UNSIGNED)
             list(APPEND NEXTCLOUD_XCODEBUILD "CODE_SIGNING_ALLOWED=NO" "CODE_SIGNING_REQUIRED=NO")

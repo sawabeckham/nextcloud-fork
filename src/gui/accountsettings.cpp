@@ -35,6 +35,9 @@
 #include "syncresult.h"
 #include "ignorelisttablewidget.h"
 #include "networksettings.h"
+#ifdef NEXTCLOUD_FORK
+#include "connectionnameeditor.h"
+#endif
 #include "tray/usermodel.h"
 #include "ui_mnemonicdialog.h"
 
@@ -65,6 +68,7 @@ using namespace Qt::StringLiterals;
 
 #ifdef BUILD_FILE_PROVIDER_MODULE
 #include "macOS/fileprovider.h"
+#include "macOS/fileproviderdomainmanager.h"
 #endif
 
 #ifdef Q_OS_MACOS
@@ -1371,6 +1375,23 @@ void AccountSettings::showConnectionSettingsDialog()
     auto *layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(12, 12, 12, 12);
     layout->setSpacing(12);
+
+#ifdef NEXTCLOUD_FORK
+    const auto nameEditor = new ConnectionNameEditor(_accountState->account(), dialog);
+    layout->addWidget(nameEditor);
+#if defined(Q_OS_MACOS) && defined(BUILD_FILE_PROVIDER_MODULE)
+    if (Mac::FileProvider::available()) {
+        connect(Mac::FileProvider::instance()->domainManager(),
+                &Mac::FileProviderDomainManager::domainDisplayNameUpdateFailed,
+                nameEditor,
+                [nameEditor, account = _accountState->account()](const QString &accountId, const QString &error) {
+                    if (accountId == account->userIdAtHostWithPort()) {
+                        nameEditor->showFinderUpdateError(error);
+                    }
+                });
+    }
+#endif
+#endif
 
     auto *networkSettings = new NetworkSettings(_accountState->account(), dialog);
     if (auto *networkSettingsLayout = networkSettings->layout()) {

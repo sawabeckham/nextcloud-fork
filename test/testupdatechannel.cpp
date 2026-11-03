@@ -20,8 +20,7 @@
 // The goal of this test is to check whether the correct update channel is used when
 // multiple accounts are set up.
 //
-// Note: The behaviour for a branded client isn't tested, because there is no
-//       sane way, to have that reported (yet).
+// Branded clients keep the default channel regardless of account subscriptions.
 //
 class TestUpdateChannel : public QObject
 {
@@ -69,7 +68,8 @@ private Q_SLOTS:
             account->setServerHasValidSubscription(false);
             OCC::AccountManager::instance()->addAccount(account);
         }
-        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(), UpdateChannel::Beta.toString());
+        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(),
+                 OCC::Theme::instance()->isBranded() ? UpdateChannel::defaultUpdateChannel().toString() : UpdateChannel::Beta.toString());
 
         {
             auto fakeCreds = new FakeCredentials{fakeQnam.data()};
@@ -81,7 +81,8 @@ private Q_SLOTS:
             account->setEnterpriseUpdateChannel(UpdateChannel::Stable);
             OCC::AccountManager::instance()->addAccount(account);
         }
-        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(), UpdateChannel::Stable.toString());
+        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(),
+                 OCC::Theme::instance()->isBranded() ? UpdateChannel::defaultUpdateChannel().toString() : UpdateChannel::Stable.toString());
 
         {
             auto fakeCreds = new FakeCredentials{fakeQnam.data()};
@@ -93,21 +94,24 @@ private Q_SLOTS:
             account->setEnterpriseUpdateChannel(UpdateChannel::Enterprise);
             OCC::AccountManager::instance()->addAccount(account);
         }
-        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(), UpdateChannel::Enterprise.toString());
+        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(),
+                 OCC::Theme::instance()->isBranded() ? UpdateChannel::defaultUpdateChannel().toString() : UpdateChannel::Enterprise.toString());
 
         {
             auto account = OCC::AccountManager::instance()->account("EnterpriseEnterprise@");
             QVERIFY(account);
             OCC::AccountManager::instance()->deleteAccount(account.get());
         }
-        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(), UpdateChannel::Stable.toString());
+        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(),
+                 OCC::Theme::instance()->isBranded() ? UpdateChannel::defaultUpdateChannel().toString() : UpdateChannel::Stable.toString());
 
         {
             auto account = OCC::AccountManager::instance()->account("EnterpriseStable@");
             QVERIFY(account);
             OCC::AccountManager::instance()->deleteAccount(account.get());
         }
-        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(), UpdateChannel::Beta.toString());
+        QCOMPARE(OCC::ConfigFile().currentUpdateChannel(),
+                 OCC::Theme::instance()->isBranded() ? UpdateChannel::defaultUpdateChannel().toString() : UpdateChannel::Beta.toString());
     }
 };
 

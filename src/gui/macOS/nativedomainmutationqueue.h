@@ -25,6 +25,8 @@ public:
 
     explicit NativeDomainMutationQueue(Dispatch dispatch);
     void enqueue(Operation operation);
+    // Preserves legacy create/remove semantics: wait for the actual callback, without Qt events.
+    void enqueueAndWait(Operation operation);
     // Query runs after earlier mutations finish. An absent domain never becomes a new registration.
     void updateExisting(Query query, Completion completion);
 

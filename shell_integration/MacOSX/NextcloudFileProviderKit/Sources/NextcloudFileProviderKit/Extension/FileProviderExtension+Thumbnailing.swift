@@ -17,6 +17,10 @@ extension FileProviderExtension: NSFileProviderThumbnailing {
         ) -> Void,
         completionHandler: @escaping (Error?) -> Void
     ) -> Progress {
+        guard !isAuxiliaryDomain else {
+            completionHandler(NSFileProviderError(.noSuchItem))
+            return Self.completedAuxiliaryProgress()
+        }
         guard let ncAccount else {
             completionHandler(NSFileProviderError(.notAuthenticated))
             return Progress()

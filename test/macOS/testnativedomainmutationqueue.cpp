@@ -5,6 +5,9 @@
 #include "gui/macOS/nativedomainmutationqueue.h"
 
 #include <QtTest>
+#include <atomic>
+#include <chrono>
+#include <future>
 #include <thread>
 #include <utility>
 
@@ -23,6 +26,15 @@ private:
         return std::make_unique<Queue>([this](auto operation) {
             scheduled.append(std::move(operation));
         });
+    }
+
+    template<typename Result>
+    static auto await(std::future<Result> &result) -> Result
+    {
+        if (result.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+            qFatal("Native mutation wait did not finish within the test watchdog.");
+        }
+        return result.get();
     }
 
 private Q_SLOTS:
@@ -216,6 +228,76 @@ private Q_SLOTS:
         worker.join();
         QVERIFY(nextRan);
         QVERIFY(workerThread == expectedThread);
+    }
+
+    void delayedCreateWaitsBeforePersistingItsIdentifier_data()
+    {
+        QTest::addColumn<bool>("nativeSuccess");
+        QTest::newRow("success") << true;
+        QTest::newRow("error") << false;
+    }
+
+    void delayedCreateWaitsBeforePersistingItsIdentifier()
+    {
+        QFETCH(bool, nativeSuccess);
+        auto queue = Queue([](auto operation) {
+            operation();
+        });
+        auto started = std::promise<Queue::Finished>{};
+        auto nativeCompletion = started.get_future();
+        auto createSucceeded = false;
+        const auto identifier = u"new-domain-identifier"_s;
+        auto mapping = std::async(std::launch::async, [&] {
+            queue.enqueueAndWait([&](auto finished) {
+                started.set_value(std::move(finished));
+            });
+            return createSucceeded ? identifier : QString{};
+        });
+        auto finished = await(nativeCompletion);
+        const auto returnedEarly = mapping.wait_for(std::chrono::milliseconds(20)) == std::future_status::ready;
+        createSucceeded = nativeSuccess;
+        finished();
+        // A duplicate native callback must not throw or release another operation.
+        finished();
+        const auto persistedIdentifier = await(mapping);
+        QVERIFY(!returnedEarly);
+        QCOMPARE(persistedIdentifier, nativeSuccess ? identifier : QString{});
+    }
+
+    void queuedRemovalWaitsBehindRenameAndReturnsPreservedData()
+    {
+        auto queue = Queue([](auto operation) {
+            operation();
+        });
+        auto renameFinished = Queue::Finished{};
+        queue.enqueue([&](auto finished) {
+            renameFinished = std::move(finished);
+        });
+        auto entered = std::promise<void>{};
+        auto enteredWait = entered.get_future();
+        auto removeStarted = std::atomic_bool(false);
+        auto removed = false;
+        auto preservedData = QString{};
+        const auto recoveryPath = u"/test/preserved-dirty-data"_s;
+        auto removal = std::async(std::launch::async, [&] {
+            entered.set_value();
+            queue.enqueueAndWait([&](auto finished) {
+                removeStarted = true;
+                removed = true;
+                preservedData = recoveryPath;
+                finished();
+            });
+            return preservedData;
+        });
+        await(enteredWait);
+        const auto returnedEarly = removal.wait_for(std::chrono::milliseconds(20)) == std::future_status::ready;
+        const auto startedEarly = removeStarted.load();
+        renameFinished();
+        const auto returnedPath = await(removal);
+        QVERIFY(!returnedEarly);
+        QVERIFY(!startedEarly);
+        QVERIFY(removed);
+        QCOMPARE(returnedPath, recoveryPath);
     }
 
     void pendingOperationsOutliveQueueOwner()

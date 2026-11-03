@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2014 ownCloud GmbH
 # SPDX-License-Identifier: GPL-2.0-or-later
 project(gui)
+include(CheckQmlWindowCloseShortcuts)
+
 find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS Widgets Svg Qml Quick QuickControls2 QuickWidgets Xml Network)
 find_package(KF6Archive REQUIRED)
 find_package(KF6GuiAddons)
@@ -270,6 +272,10 @@ set(client_SRCS
     integration/fileactionsmodel.cpp
     )
 
+if(NEXTCLOUD_FORK)
+    list(APPEND client_SRCS connectionnameeditor.h connectionnameeditor.cpp)
+endif()
+
 if (NOT DISABLE_ACCOUNT_MIGRATION)
     list(APPEND client_SRCS
         legacyaccountselectiondialog.h
@@ -361,6 +367,12 @@ IF( APPLE )
         nativetitlebar_mac.mm
         folderwatcher_mac.cpp)
     set_property(SOURCE
+        cocoainitializer_mac.mm
+        macOS/localnetworkpermission.mm
+        macOS/findersyncxpc_mac.mm
+        macOS/findersyncservice.mm
+        macOS/fileproviderservice.mm
+        updater/sparkleupdater_mac.mm
         macOS/trayaccountpopup/trayaccountpopupimageutils.mm
         macOS/trayaccountpopup/trayaccountpopupviewutils.mm
         macOS/trayaccountpopup/nchoverview.mm
@@ -389,6 +401,8 @@ IF( APPLE )
         macOS/fileprovideritemmetadata_mac.mm
         macOS/fileprovidersettingscontroller_mac.mm
         macOS/fileproviderutils_mac.mm
+        macOS/fileproviderxpc_mac.mm
+        macOS/fileproviderxpc_mac_utils.mm
         macOS/progressobserver.m
         foregroundbackground_mac.mm
         foregroundbackground_cocoa.mm
@@ -405,6 +419,12 @@ IF( APPLE )
             macOS/fileprovider_mac.mm
             macOS/fileproviderdomainmanager.h
             macOS/fileproviderdomainmanager.mm
+            macOS/auxiliarydomainreconciler.h
+            macOS/auxiliarydomainreconciler.cpp
+            macOS/domaindisplaynamereconciler.h
+            macOS/domaindisplaynamereconciler.cpp
+            macOS/nativedomainmutationqueue.h
+            macOS/nativedomainmutationqueue.cpp
             macOS/fileprovidereditlocallyjob.h
             macOS/fileprovidereditlocallyjob.cpp
             macOS/fileprovidereditlocallyjob_mac.mm
@@ -607,6 +627,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
 endif()
 
 add_library(nextcloudCore STATIC ${final_src})
+add_qml_window_close_shortcut_check("${CMAKE_CURRENT_SOURCE_DIR}" nextcloudCore)
 
 target_link_libraries(nextcloudCore
   PUBLIC

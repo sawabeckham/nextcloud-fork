@@ -22,6 +22,7 @@ public extension FileProviderExtension {
     /// The working set is deliberately **not** signalled here. Doing so enumerates the server before the released uploads are retried, and an item which changed on both sides then has its base version refreshed by that enumeration — so the upload which follows no longer looks like a conflict and quietly overwrites the newer version on the server. Remote changes are found soon enough anyway, because the app is still polling or listening and signals the working set itself. Releasing the throttle is this observation's whole job.
     ///
     internal func observeBlockSync() {
+        guard !isAuxiliaryDomain else { return }
         blockSyncObservation = UserDefaults.standard.observe(\.blockSync, options: [.new]) { [weak self] _, _ in
             guard let self, blockSync == false else {
                 return

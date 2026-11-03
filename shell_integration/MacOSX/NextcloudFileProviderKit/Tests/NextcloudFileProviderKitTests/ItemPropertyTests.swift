@@ -21,6 +21,107 @@ final class ItemPropertyTests: NextcloudFileProviderKitTestCase {
         Realm.Configuration.defaultConfiguration.inMemoryIdentifier = name
     }
 
+    func testStoredRootDisplayNameDoesNotChangeRemoteMetadata() async throws {
+        let storedItem = await Item.storedItem(
+            identifier: .rootContainer,
+            account: Self.account,
+            remoteInterface: MockRemoteInterface(account: Self.account),
+            dbManager: Self.dbManager,
+            rootDisplayName: "files.example.org:8443",
+            log: FileProviderLogMock()
+        )
+        let item = try XCTUnwrap(storedItem)
+        XCTAssertEqual(item.filename, "files.example.org:8443")
+        XCTAssertEqual(item.itemIdentifier, .rootContainer)
+        XCTAssertEqual(item.parentItemIdentifier, .rootContainer)
+        XCTAssertEqual(item.metadata.fileName, "/")
+        XCTAssertEqual(item.metadata.fileNameView, "/")
+        XCTAssertEqual(item.metadata.serverUrl, Self.account.davFilesUrl)
+    }
+
+    func testRootDisplayNameRejectsInvalidNamesAndPreservesDefault() {
+        for name: String? in [nil, "", " \n ", "/", "https://files.example.org", "files\0.example.org"] {
+            let item = Item.rootContainer(
+                account: Self.account,
+                remoteInterface: MockRemoteInterface(account: Self.account),
+                dbManager: Self.dbManager,
+                remoteSupportsTrash: true,
+                displayName: name,
+                log: FileProviderLogMock()
+            )
+            XCTAssertEqual(item.filename, "/", "Invalid override: \(String(describing: name))")
+        }
+    }
+
+    func testRootDisplayNameSurvivesMetadataOnlyModification() async throws {
+        let item = Item.rootContainer(
+            account: Self.account,
+            remoteInterface: MockRemoteInterface(account: Self.account),
+            dbManager: Self.dbManager,
+            remoteSupportsTrash: true,
+            displayName: "files.example.org",
+            log: FileProviderLogMock()
+        )
+        let (modifiedItem, error) = await item.modify(
+            itemTarget: item,
+            changedFields: [.lastUsedDate],
+            contents: nil,
+            dbManager: Self.dbManager
+        )
+        XCTAssertNil(error)
+        let modified = try XCTUnwrap(modifiedItem)
+        XCTAssertEqual(modified.filename, "files.example.org")
+        XCTAssertEqual(modified.metadata.fileName, "/")
+        XCTAssertEqual(modified.metadata.serverUrl, Self.account.davFilesUrl)
+    }
+
+    func testRootDisplayNameDoesNotRenameOrdinaryItems() {
+        let metadata = SendableItemMetadata(ocId: "ordinary-file", fileName: "document.txt", account: Self.account)
+        let item = Item(
+            metadata: metadata,
+            parentItemIdentifier: .rootContainer,
+            account: Self.account,
+            remoteInterface: MockRemoteInterface(account: Self.account),
+            dbManager: Self.dbManager,
+            displayFileActions: true,
+            remoteSupportsTrash: true,
+            rootDisplayName: "files.example.org",
+            log: FileProviderLogMock()
+        )
+        XCTAssertEqual(item.filename, "document.txt")
+        XCTAssertEqual(item.metadata, metadata)
+    }
+
+    func testRootDisplayNameIsEnabledOnlyForTheForkExtension() {
+        let host = "files.example.org"
+        XCTAssertEqual(FileProviderExtension.rootItemDisplayName(
+            bundleIdentifier: "site.manro.nextcloudfork.FileProviderExt", domainDisplayName: host
+        ), host)
+        for identifier: String? in [nil, "com.nextcloud.desktopclient.FileProviderExt", "site.manro.nextcloudfork.FileProviderExt.other"] {
+            XCTAssertNil(FileProviderExtension.rootItemDisplayName(bundleIdentifier: identifier, domainDisplayName: host))
+        }
+    }
+
+    func testRootDisplayNameChangeInvalidatesOnlyMetadataVersion() {
+        func root(named name: String) -> Item {
+            Item.rootContainer(
+                account: Self.account,
+                remoteInterface: MockRemoteInterface(account: Self.account),
+                dbManager: Self.dbManager,
+                remoteSupportsTrash: true,
+                displayName: name,
+                log: FileProviderLogMock()
+            )
+        }
+        let first = root(named: "first.example.org")
+        let second = root(named: "second.example.org")
+        XCTAssertNotEqual(first.itemVersion.metadataVersion, second.itemVersion.metadataVersion)
+        XCTAssertEqual(first.itemVersion.contentVersion, second.itemVersion.contentVersion)
+        XCTAssertEqual(first.metadata.fileName, second.metadata.fileName)
+        XCTAssertEqual(first.metadata.serverUrl, second.metadata.serverUrl)
+        XCTAssertEqual(first.itemIdentifier, second.itemIdentifier)
+    }
+
     func testMetadataContentType() {
         var metadata =
             SendableItemMetadata(ocId: "test-id", fileName: "test.txt", account: Self.account)
@@ -89,6 +190,36 @@ final class ItemPropertyTests: NextcloudFileProviderKitTestCase {
         XCTAssertTrue(itemWithToken.fileSystemFlags.contains(.userWritable))
         XCTAssertNotEqual(itemWithoutToken.itemVersion.metadataVersion, itemWithToken.itemVersion.metadataVersion)
         XCTAssertEqual(itemWithoutToken.itemVersion.contentVersion, itemWithToken.itemVersion.contentVersion)
+    }
+
+    func testSharedFileLockUsesCurrentAccountInsteadOfFileOwner() {
+        var metadata =
+            SendableItemMetadata(ocId: "shared-file-id", fileName: "shared.txt", account: Self.account)
+        metadata.ownerId = "another-user"
+        metadata.permissions = "GW"
+        metadata.lock = true
+        metadata.lockOwnerType = NKLockType.token.rawValue
+        metadata.lockTimeOut = Date().addingTimeInterval(3600)
+
+        for (lockOwner, lockToken, expectedWritable) in [
+            (Self.account.id, Optional("files_lock/local-token"), true),
+            (Self.account.id, nil, false),
+            (metadata.ownerId, Optional("files_lock/other-token"), false)
+        ] {
+            metadata.lockOwner = lockOwner
+            metadata.lockToken = lockToken
+
+            let item = Item(
+                metadata: metadata,
+                parentItemIdentifier: .rootContainer,
+                account: Self.account,
+                remoteInterface: MockRemoteInterface(account: Self.account),
+                dbManager: Self.dbManager
+            )
+
+            XCTAssertEqual(item.capabilities.contains(.allowsWriting), expectedWritable)
+            XCTAssertEqual(item.fileSystemFlags.contains(.userWritable), expectedWritable)
+        }
     }
 
     func testMetadataExtensionContentType() {

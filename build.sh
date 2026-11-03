@@ -1,7 +1,10 @@
 #!/bin/zsh
+# SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Собирает «Nextcloud Fork.app»: клиент Nextcloud 35, в котором диск в Finder («Места», File Provider)
 # работает вместе с обычной синхронизацией выбранных папок.
-# NO_INSTALL=1 ./build.sh — только собрать (в $BUILD_DIR/package).
+# ./build.sh — собрать подписанное приложение и PKG; установка запускается вручную.
+# NO_INSTALL=1 сохранён для совместимости: сборка никогда не запускает установку автоматически.
 # SKIP_EXTENSIONS=1 — без расширений Finder и File Provider (быстрее, для проверки кода клиента).
 #
 # Зависимости — из Homebrew (список в BREW_DEPS), KDSingleApplication в Homebrew нет — собирается здесь же.
@@ -9,7 +12,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-BUILD_DIR="${BUILD_DIR:-$HOME/Library/Caches/RomanenkoSources/nextcloud-fork}"
+fork_version="$(sed -n 's/^set(NEXTCLOUD_FORK_VERSION "\([0-9.]*\)")/\1/p' FORK_VERSION.cmake)"
+BUILD_DIR="${BUILD_DIR:-$HOME/Library/Caches/RomanenkoSources/nextcloud-fork/releases/$fork_version}"
 # Подпись: Personal Team Apple ID в Xcode (сертификат «Apple Development»). UNSIGNED=1 — собрать без подписи.
 TEAM_ID="${TEAM_ID:-EW76LLFDSH}"
 [[ "${UNSIGNED:-}" == 1 ]] && TEAM_ID=""
@@ -57,7 +61,7 @@ if [[ -n "$TEAM_ID" ]]; then
   }
 fi
 
-KDSA_PREFIX="$BUILD_DIR/deps/kdsingleapplication-$KDSA_TAG"
+KDSA_PREFIX="${KDSA_PREFIX:-$BUILD_DIR/deps/kdsingleapplication-$KDSA_TAG}"
 if [[ ! -f "$KDSA_PREFIX/lib/cmake/KDSingleApplication-qt6/KDSingleApplication-qt6Config.cmake" ]]; then
   echo "• KDSingleApplication $KDSA_TAG"
   src="$BUILD_DIR/deps/src/kdsingleapplication"
@@ -78,7 +82,8 @@ echo "• Настройка сборки"
 if ! cmake -S . -B "$BUILD_DIR/client" -G Ninja \
     -DNEXTCLOUD_FORK=ON -DNEXTCLOUD_EXPERIMENTAL_HYBRID_SYNC=ON \
     -DNEXTCLOUD_FORK_UNSIGNED=ON -DDEVELOPMENT_TEAM="$TEAM_ID" \
-    -DBUILD_FILE_PROVIDER_MODULE=ON -DBUILD_UPDATER=OFF -DBUILD_TESTING=OFF \
+    -DBUILD_FILE_PROVIDER_MODULE=ON -DBUILD_UPDATER=OFF -DBUILD_TESTING="${CLIENT_TESTING:-OFF}" \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_OWNCLOUD_OSX_BUNDLE=ON -DCMAKE_OSX_ARCHITECTURES=arm64 -DMACOS_USE_ICON_COMPOSER=OFF \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="$KDSA_PREFIX;$HB;$HB/opt/openssl@3" \
@@ -160,11 +165,17 @@ if [[ -n "$IDENTITY" ]]; then
   codesign --verify --deep --strict "$APP" >> "$LOG/sign.log" 2>&1 || { tail -n 10 "$LOG/sign.log"; exit 1; }
 fi
 
-if [[ "${NO_INSTALL:-}" == 1 ]]; then
-  echo "Собрано: $APP"
+installer="$BUILD_DIR/Nextcloud-Fork-$fork_version-arm64.pkg"
+if [[ -z "$IDENTITY" ]]; then
+  echo "Собрано без подписи: $APP. PKG требует подписанного приложения."
   exit 0
 fi
-
-# Совместная работа File Provider и синхронизации папок ещё не проверена на живом аккаунте: ставить пока рано.
-echo "Установка пока не делается (см. FORK.md). Собрано: $APP"
-exit 1
+if [[ -e "$installer" ]]; then
+  mv "$installer" "$installer.previous"
+fi
+python3 admin/fork/make-installer.py --app "$APP" --output "$installer"
+python3 admin/fork/publish-installer.py --source "$installer" --directory "$HOME/Github_local/pkg" \
+  > "$LOG/publish-installer.json"
+echo "Собрано: $APP"
+echo "Установщик: $HOME/Github_local/pkg/${installer:t}"
+echo "Откройте установщик для установки в /Applications/RomanenkoApp."

@@ -124,11 +124,11 @@
         >
             <stop
                 offset="0%"
-                stop-color="#1CB3FF"
+                stop-color="#4295F5"
             />
             <stop
                 offset="100%"
-                stop-color="#0088CC"
+                stop-color="#145CC5"
             />
         </linearGradient>
         <filter

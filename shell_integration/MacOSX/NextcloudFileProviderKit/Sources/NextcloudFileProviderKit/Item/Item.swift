@@ -22,11 +22,12 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
 
     private let displayFileActions: Bool
     private let remoteSupportsTrash: Bool
+    private let rootDisplayName: String?
 
     private var lockStateAllowsModifications: Bool {
         metadata.lock == false || (
             metadata.lockOwnerType == NKLockType.token.rawValue &&
-                metadata.ownerId == metadata.lockOwner &&
+                account.id == metadata.lockOwner &&
                 metadata.lockToken != nil
         )
     }
@@ -104,6 +105,10 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         let extensionVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         var metadataVersionString = "\(metadata.etag)|\(extensionVersion)"
 
+        if itemIdentifier == .rootContainer, let rootDisplayName {
+            metadataVersionString += "|root:\(rootDisplayName)"
+        }
+
         // Reacquiring an existing lock can restore the local token without changing the etag.
         // Include the resulting capability state so File Provider re-reads the item as writable.
         if metadata.lock {
@@ -131,7 +136,10 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
     }
 
     public var filename: String {
-        metadata.isTrashed && !metadata.trashbinFileName.isEmpty ?
+        if itemIdentifier == .rootContainer, let rootDisplayName {
+            return rootDisplayName
+        }
+        return metadata.isTrashed && !metadata.trashbinFileName.isEmpty ?
             metadata.trashbinFileName : !metadata.fileName.isEmpty ?
             metadata.fileName : "unnamed file"
     }
@@ -361,6 +369,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         remoteInterface: RemoteInterface,
         dbManager: FilesDatabaseManager,
         remoteSupportsTrash: Bool,
+        displayName: String? = nil,
         log: any FileProviderLogging
     ) -> Item {
         var metadata = SendableItemMetadata(
@@ -409,6 +418,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             dbManager: dbManager,
             displayFileActions: false,
             remoteSupportsTrash: remoteSupportsTrash,
+            rootDisplayName: displayName,
             log: log
         )
     }
@@ -476,6 +486,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         dbManager: FilesDatabaseManager,
         displayFileActions: Bool,
         remoteSupportsTrash: Bool,
+        rootDisplayName: String? = nil,
         log: any FileProviderLogging
     ) {
         self.metadata = metadata
@@ -486,10 +497,19 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         self.dbManager = dbManager
         self.displayFileActions = displayFileActions
         self.remoteSupportsTrash = remoteSupportsTrash
+        self.rootDisplayName = rootDisplayName.flatMap { value in
+            let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, !name.contains("/"),
+                  !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+            else {
+                return nil
+            }
+            return name
+        }
         super.init()
     }
 
-    public static func storedItem(identifier: NSFileProviderItemIdentifier, account: Account, remoteInterface: RemoteInterface, dbManager: FilesDatabaseManager, log: any FileProviderLogging) async -> Item? {
+    public static func storedItem(identifier: NSFileProviderItemIdentifier, account: Account, remoteInterface: RemoteInterface, dbManager: FilesDatabaseManager, rootDisplayName: String? = nil, log: any FileProviderLogging) async -> Item? {
         // resolve the given identifier to a record in the model
 
         let remoteSupportsTrash = await remoteInterface.supportsTrash(account: account)
@@ -500,6 +520,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
                 remoteInterface: remoteInterface,
                 dbManager: dbManager,
                 remoteSupportsTrash: remoteSupportsTrash,
+                displayName: rootDisplayName,
                 log: log
             )
         }

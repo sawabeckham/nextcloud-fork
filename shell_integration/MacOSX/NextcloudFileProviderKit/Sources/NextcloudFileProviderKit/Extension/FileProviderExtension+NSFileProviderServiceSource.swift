@@ -5,6 +5,7 @@ import FileProvider
 
 extension FileProviderExtension: NSFileProviderServiceSource {
     public func makeListenerEndpoint() throws -> NSXPCListenerEndpoint {
+        guard !isAuxiliaryDomain else { throw NSFileProviderError(.notAuthenticated) }
         logger.info("Making listener endpoint...")
 
         // Invalidate existing listener.

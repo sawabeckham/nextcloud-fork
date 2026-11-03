@@ -15,22 +15,23 @@
 
 #include "gui/accountmanager.h"
 #include "gui/folderman.h"
-#include "gui/userinfo.h"
 #include "gui/macOS/fileprovider.h"
 #include "gui/macOS/fileprovideritemmetadata.h"
 #include "gui/macOS/fileproviderutils.h"
+#include "gui/userinfo.h"
 #include "libsync/configfile.h"
 #include "libsync/theme.h"
 
 // Objective-C imports
-#import <Foundation/Foundation.h>
-#import <FileProvider/FileProvider.h>
 #import <AppKit/AppKit.h>
+#import <FileProvider/FileProvider.h>
+#import <Foundation/Foundation.h>
 // End of Objective-C imports
 
 static_assert(__has_feature(objc_arc), "fileprovidersettingscontroller_mac requires ARC.");
 
-namespace {
+namespace
+{
 // NSUserDefaults entries
 constexpr auto enabledAccountsSettingsKey = "enabledAccounts";
 
@@ -41,9 +42,11 @@ bool domainRestorationRequiresXpcReconfiguration(const QString &storedIdentifier
 
 } // namespace
 
-namespace OCC {
+namespace OCC
+{
 
-namespace Mac {
+namespace Mac
+{
 
 Q_LOGGING_CATEGORY(lcFileProviderSettingsController, "nextcloud.gui.mac.fileprovider.settingscontroller")
 
@@ -108,10 +111,7 @@ public:
 
     [[nodiscard]] VfsAccountsAction setVfsEnabledForAccount(const QString &userIdAtHost, const bool setEnabled) const
     {
-        qCInfo(lcFileProviderSettingsController) << "Setting file provider enablement of account"
-                                                 << userIdAtHost
-                                                 << "to"
-                                                 << setEnabled;
+        qCInfo(lcFileProviderSettingsController) << "Setting file provider enablement of account" << userIdAtHost << "to" << setEnabled;
 
         const auto existingDomainId = q->fileProviderDomainIdentifierForAccount(userIdAtHost);
 
@@ -138,8 +138,7 @@ public:
             auto const identifier = Mac::FileProvider::instance()->domainManager()->addDomainForAccount(accountState.data());
 
             if (identifier.isEmpty()) {
-                qCWarning(lcFileProviderSettingsController) << "Failed to create file provider domain for account"
-                                                            << userIdAtHost;
+                qCWarning(lcFileProviderSettingsController) << "Failed to create file provider domain for account" << userIdAtHost;
                 return VfsAccountsAction::VfsAccountsFailed;
             }
 
@@ -164,11 +163,11 @@ public:
                     const QString capturedUrl = preservedDataUrl;
                     dispatch_async(dispatch_get_main_queue(), ^{
                         QMessageBox::warning(nullptr,
-                                           q->tr("Unsynchronized Content"),
-                                           q->tr("Some of your locally changed items were not uploaded yet but will be preserved."));
+                                             q->tr("Unsynchronized Content"),
+                                             q->tr("Some of your locally changed items were not uploaded yet but will be preserved."));
                         NSURL *url = [NSURL fileURLWithPath:capturedUrl.toNSString() isDirectory:YES];
                         qCDebug(lcFileProviderSettingsController) << "Opening directory in file viewer:" << url.path;
-                        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[url]];
+                        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[ url ]];
                     });
                 } else {
                     qCWarning(lcFileProviderSettingsController) << "Could not get preserved data URL for domain" << existingDomainId;
@@ -286,7 +285,7 @@ public:
             QSet<QString> existingDomainIdentifiers;
             auto restoredDomain = false;
 
-            for (NSFileProviderDomain * const domain : domains) {
+            for (NSFileProviderDomain *const domain : domains) {
                 existingDomainIdentifiers.insert(QString::fromNSString(domain.identifier));
             }
 
@@ -304,10 +303,7 @@ public:
                     qCInfo(lcFileProviderSettingsController) << "Creating missing file provider domain for account" << userIdAtHost;
                     (void)setVfsEnabledForAccount(userIdAtHost, true);
                 } else if (existingDomainIdentifiers.contains(identifier) == false) {
-                    qCInfo(lcFileProviderSettingsController) << "Restoring missing domain with identifier"
-                                                             << identifier
-                                                             << "for account"
-                                                             << userIdAtHost;
+                    qCInfo(lcFileProviderSettingsController) << "Restoring missing domain with identifier" << identifier << "for account" << userIdAtHost;
 
                     const auto newIdentifier = Mac::FileProvider::instance()->domainManager()->addDomainForAccount(accountState.data());
 
@@ -363,8 +359,12 @@ public:
             configuredDomainIdentifiers.insert(identifier);
         }
 
-        for (NSFileProviderDomain * const domain : domains) {
+        for (NSFileProviderDomain *const domain : domains) {
             const auto identifier = QString::fromNSString(domain.identifier);
+
+            if (Mac::FileProviderDomainManager::isAuxiliaryDomainIdentifier(identifier)) {
+                continue;
+            }
 
             if (!configuredDomainIdentifiers.contains(identifier)) {
                 qCInfo(lcFileProviderSettingsController) << "Identified orphaned domain" << domain.identifier;
@@ -431,8 +431,7 @@ FileProviderSettingsController::FileProviderSettingsController(QObject *parent)
         userInfo->setActive(true);
     }
 
-    connect(accManager, &AccountManager::accountAdded,
-            this, [this](AccountState *const accountState) {
+    connect(accManager, &AccountManager::accountAdded, this, [this](AccountState *const accountState) {
         const auto account = accountState ? accountState->account() : nullptr;
 
         if (!account) {
@@ -448,8 +447,7 @@ FileProviderSettingsController::FileProviderSettingsController(QObject *parent)
         }
 
         if (Mac::FileProvider::available() && fileProviderModeEnabled() && !vfsEnabledForAccount(accountUserIdAtHost)) {
-            qCInfo(lcFileProviderSettingsController) << "File provider mode is enabled, setting up domain for new account"
-                                                     << accountUserIdAtHost;
+            qCInfo(lcFileProviderSettingsController) << "File provider mode is enabled, setting up domain for new account" << accountUserIdAtHost;
             setVfsEnabledForAccount(accountUserIdAtHost, true);
         }
     });
@@ -500,15 +498,13 @@ void FileProviderSettingsController::resetVfsForAccount(const QString &userIdAtH
     // Reset only makes sense while the app-level mode is on: with it off there is no
     // domain to reset and recreating one would contradict the disabled state.
     if (!fileProviderModeEnabled()) {
-        qCWarning(lcFileProviderSettingsController)
-            << "File provider mode is disabled, ignoring reset request for" << userIdAtHost;
+        qCWarning(lcFileProviderSettingsController) << "File provider mode is disabled, ignoring reset request for" << userIdAtHost;
         return;
     }
 
     // Same single-flight guard the other mutating paths use.
     if (_isOperationInProgress) {
-        qCWarning(lcFileProviderSettingsController)
-            << "Operation already in progress, ignoring reset request";
+        qCWarning(lcFileProviderSettingsController) << "Operation already in progress, ignoring reset request";
         return;
     }
 
@@ -545,8 +541,7 @@ void FileProviderSettingsController::resetVfsForAccount(const QString &userIdAtH
             }
 
             if (reAddFailed) {
-                qCWarning(lcFileProviderSettingsController)
-                    << "Failed to re-create file provider domain after reset for" << capturedUserIdAtHost;
+                qCWarning(lcFileProviderSettingsController) << "Failed to re-create file provider domain after reset for" << capturedUserIdAtHost;
                 QMessageBox::warning(nullptr,
                                      tr("File Provider reset failed"),
                                      tr("The File Provider domain for this account could not be re-created. "
@@ -660,16 +655,17 @@ void FileProviderSettingsController::applyFileProviderModeToAllAccounts(const bo
                 }
 
                 if (!capturedChangedAccounts.isEmpty()) {
-                    QMessageBox::information(nullptr,
-                                             tr("File Provider enabled"),
-                                             tr("File Provider has been enabled for all accounts.\n\nYour files are now accessible in Finder under the \"Locations\" section."));
+                    QMessageBox::information(
+                        nullptr,
+                        tr("File Provider enabled"),
+                        tr("File Provider has been enabled for all accounts.\n\nYour files are now accessible in Finder under the \"Locations\" section."));
                 }
             } else if (enabled) {
                 QMessageBox::warning(nullptr,
                                      tr("File Provider could not be enabled for all accounts"),
-                                     tr("File Provider could not be set up for the following account(s):\n%1\n\nYour classic sync folders were left unchanged. You will be asked how to proceed the next time %2 starts, or you can resolve it from the account settings.")
-                                         .arg(capturedFailedAccounts.join(QStringLiteral("\n")),
-                                              Theme::instance()->appNameGUI()));
+                                     tr("File Provider could not be set up for the following account(s):\n%1\n\nYour classic sync folders were left unchanged. "
+                                        "You will be asked how to proceed the next time %2 starts, or you can resolve it from the account settings.")
+                                         .arg(capturedFailedAccounts.join(QStringLiteral("\n")), Theme::instance()->appNameGUI()));
             }
 
             Q_EMIT controller->fileProviderModeApplyFinished(enabled, capturedFailedAccounts);
@@ -691,8 +687,7 @@ void FileProviderSettingsController::removeAllClassicSyncFolders()
         return;
     }
 
-    qCInfo(lcFileProviderSettingsController) << "Removing" << folders.count()
-                                             << "classic sync folder connection(s); local files are kept on disk.";
+    qCInfo(lcFileProviderSettingsController) << "Removing" << folders.count() << "classic sync folder connection(s); local files are kept on disk.";
 
     for (const auto folder : folders) {
         folderMan->removeFolder(folder);
@@ -745,6 +740,7 @@ void FileProviderSettingsController::performStartupReconciliation()
     }
 
     d->ensureDomainConfigurationMatchesMode();
+    Mac::FileProvider::instance()->domainManager()->requestAuxiliaryDomainReconciliation();
 }
 
 void FileProviderSettingsController::showReconciliationDialog()
@@ -755,15 +751,15 @@ void FileProviderSettingsController::showReconciliationDialog()
 
     _reconciliationDialogShowing = true;
 
-    const auto messageBoxText = tr("This installation has both the File Provider integration and classic sync folders configured. macOS cannot run the File Provider integration and the classic Finder integration at the same time.")
+    const auto messageBoxText = tr("This installation has both the File Provider integration and classic sync folders configured. macOS cannot run the File "
+                                   "Provider integration and the classic Finder integration at the same time.")
         + QStringLiteral("\n\n")
-        + tr("Keep File Provider: all accounts appear in Finder under \"Locations\". Classic sync folder connections will be removed. Already synced files will be preserved in place.")
+        + tr("Keep File Provider: all accounts appear in Finder under \"Locations\". Classic sync folder connections will be removed. Already synced files "
+             "will be preserved in place.")
         + QStringLiteral("\n\n")
         + tr("Keep classic sync folders: File Provider is turned off for all accounts. Items that were not uploaded yet will be preserved.");
 
-    const auto messageBox = new QMessageBox(QMessageBox::Question,
-                                            tr("Choose how to sync your files"),
-                                            messageBoxText);
+    const auto messageBox = new QMessageBox(QMessageBox::Question, tr("Choose how to sync your files"), messageBoxText);
     messageBox->setAttribute(Qt::WA_DeleteOnClose);
     const auto keepFileProviderButton = messageBox->addButton(tr("Keep File Provider"), QMessageBox::AcceptRole);
     const auto keepClassicButton = messageBox->addButton(tr("Keep classic sync folders"), QMessageBox::AcceptRole);

@@ -202,3 +202,8 @@ theme.qrc
 # Nix
 result
 flake.lock
+
+# Local analysis/runtime caches and machine-specific SwiftPM mirrors
+__pycache__/
+*.py[cod]
+**/.swiftpm/configuration/

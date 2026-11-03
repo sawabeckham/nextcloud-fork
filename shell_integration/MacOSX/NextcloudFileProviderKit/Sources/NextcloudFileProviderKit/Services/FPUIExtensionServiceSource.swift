@@ -8,21 +8,20 @@ import NextcloudKit
 import OSLog
 
 class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCListenerDelegate, FPUIExtensionService {
-    let keychain: Keychain
     let listener = NSXPCListener.anonymous()
     let logger: FileProviderLogger
     let serviceName = fpUiExtensionServiceName
     let fpExtension: FileProviderExtension
 
     init(fpExtension: FileProviderExtension) {
-        keychain = Keychain(log: fpExtension.log)
         logger = FileProviderLogger(category: "FPUIExtensionServiceSource", log: fpExtension.log)
-        logger.debug("Instantiating FPUIExtensionService service")
+        logger.debug("Instantiating service source.")
         self.fpExtension = fpExtension
         super.init()
     }
 
     func makeListenerEndpoint() throws -> NSXPCListenerEndpoint {
+        guard !fpExtension.isAuxiliaryDomain else { throw NSFileProviderError(.notAuthenticated) }
         listener.delegate = self
         listener.resume()
         return listener.endpoint
@@ -32,6 +31,7 @@ class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCLi
         _: NSXPCListener,
         shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
+        guard !fpExtension.isAuxiliaryDomain else { return false }
         newConnection.exportedInterface = NSXPCInterface(with: FPUIExtensionService.self)
         newConnection.exportedObject = self
         newConnection.resume()
@@ -41,10 +41,11 @@ class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCLi
     // MARK: - FPUIExtensionService protocol methods
 
     func authenticate() async -> NSError? {
-        logger.info("Authenticating...")
+        guard !fpExtension.isAuxiliaryDomain else { return NSFileProviderError(.notAuthenticated) as NSError }
+        logger.info("Authenticating.")
 
-        guard let user = fpExtension.config.user, let userId = fpExtension.config.userId, let serverUrl = fpExtension.config.serverUrl, let password = keychain.getPassword(for: user, on: serverUrl) else {
-            logger.error("Missing account information, cannot authenticate!")
+        guard let user = fpExtension.config.user, let userId = fpExtension.config.userId, let serverUrl = fpExtension.config.serverUrl, let password = fpExtension.keychain.getPassword(for: user) else {
+            logger.error("Cannot authenticate because account information is missing.", [.domain: fpExtension.domain.identifier.rawValue])
             return NSError(.missingAccountInformation)
         }
 
@@ -56,6 +57,7 @@ class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCLi
     }
 
     func userAgent() async -> NSString? {
+        guard !fpExtension.isAuxiliaryDomain else { return nil }
         guard let account = fpExtension.ncAccount?.ncKitAccount else {
             return nil
         }
@@ -65,10 +67,12 @@ class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCLi
     }
 
     func credentials() async -> NSDictionary {
-        (fpExtension.ncAccount?.dictionary() ?? [:]) as NSDictionary
+        guard !fpExtension.isAuxiliaryDomain else { return [:] }
+        return (fpExtension.ncAccount?.dictionary() ?? [:]) as NSDictionary
     }
 
     func itemServerPath(identifier: NSFileProviderItemIdentifier) async -> NSString? {
+        guard !fpExtension.isAuxiliaryDomain else { return nil }
         let rawIdentifier = identifier.rawValue
         logger.info("Fetching shares for item \(rawIdentifier)")
 
@@ -95,6 +99,7 @@ class FPUIExtensionServiceSource: NSObject, NSFileProviderServiceSource, NSXPCLi
     }
 
     func presentUnifiedSharingDialog(identifier: NSFileProviderItemIdentifier, localPath: NSString) async -> Bool {
+        guard !fpExtension.isAuxiliaryDomain else { return false }
         guard let account = fpExtension.ncAccount else {
             logger.error("Could not present unified sharing because the account is unavailable.", [.item: identifier])
             return false

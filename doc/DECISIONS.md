@@ -23,3 +23,8 @@ Finder получает имя существующего mapped domain с пр�
 ## 03.11.2026 — штатный quit в preinstall (Unreleased0.6.6)
 
 По просьбе владельца заменяем требование ручного закрытия на single-instance CLI --quit в console user session. AppleScript уже вернул -128 на этом Mac; CLI официально поддержан Application::parseOptions. Не используем SIGKILL, root запуск GUI или остановку File Provider. Ожидание30s ограничено; при невыходе безопасный отказ до замены payload. Текущий опубликованный локально PKG0.6.5 неизменяем; новая упаковка только следующим выпуском.
+
+
+## 03.11.2026 — редактор имени Finder0.6.7
+
+Реальный screenshot выявил отличие macOS QFormLayout от ранее просмотренного offscreen fixture: поле не растягивалось, Save уходила на край отдельной строки. Заменена структура: label сверху, поле Expanding +Save справа в одном QHBoxLayout, help/reset под полем. Русские fork-only подписи выбираются по фактическому Application ui_lang; upstream translations/ по правилам не редактируется. Для прочих языков сохранён английский source tr fallback. Это ограниченный локальный fallback, не полноценный каталог локализации. Свойство ui_lang учитывает явный override пользователя; системную локаль напрямую не используем.

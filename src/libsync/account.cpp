@@ -196,6 +196,43 @@ QString Account::displayName() const
     return displayName;
 }
 
+#ifdef NEXTCLOUD_FORK
+QString Account::connectionName() const
+{
+    return _connectionName;
+}
+
+bool Account::isValidConnectionName(const QString &name)
+{
+    constexpr auto maximumNameLength = 100;
+    constexpr auto maximumNameBytes = 200;
+    for (const auto character : name) {
+        if (character == u'/' || character == u':' || character == u'\\' || character.category() == QChar::Other_Control
+            || character.category() == QChar::Separator_Line || character.category() == QChar::Separator_Paragraph) {
+            return false;
+        }
+    }
+    const auto normalizedName = name.trimmed();
+    return normalizedName.size() <= maximumNameLength && normalizedName.toUtf8().size() <= maximumNameBytes && normalizedName != u"." && normalizedName != u".."
+        && !normalizedName.endsWith(u'.');
+}
+
+bool Account::setConnectionName(const QString &name)
+{
+    if (!isValidConnectionName(name)) {
+        return false;
+    }
+    const auto normalizedName = name.trimmed();
+    if (_connectionName == normalizedName) {
+        return true;
+    }
+    _connectionName = normalizedName;
+    Q_EMIT wantsAccountSaved(sharedFromThis());
+    Q_EMIT connectionNameChanged();
+    return true;
+}
+#endif
+
 QString Account::shortcutName() const
 {
     auto url_part = _url.host();

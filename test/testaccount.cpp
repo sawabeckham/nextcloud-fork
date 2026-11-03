@@ -68,6 +68,87 @@ private Q_SLOTS:
         QCOMPARE(account->davUser(), expectedDavUser);
     }
 
+#ifdef NEXTCLOUD_FORK
+    void connectionNameValidation_data()
+    {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("valid");
+        QTest::newRow("automatic") << QString{} << true;
+        QTest::newRow("spaces-reset") << u"   "_s << true;
+        QTest::newRow("trimmed-cyrillic") << u"  Мой сервер  "_s << true;
+        QTest::newRow("utf16-boundary") << QString(100, u'a') << true;
+        QTest::newRow("utf16-overflow") << QString(101, u'a') << false;
+        QTest::newRow("utf8-boundary") << QString(100, QChar(0x044F)) << true;
+        QTest::newRow("utf8-overflow") << QString(67, QChar(0x4E00)) << false;
+        QTest::newRow("emoji-boundary") << u"😀"_s.repeated(50) << true;
+        QTest::newRow("emoji-overflow") << u"😀"_s.repeated(51) << false;
+        QTest::newRow("slash") << u"my/server"_s << false;
+        QTest::newRow("colon") << u"my:server"_s << false;
+        QTest::newRow("backslash") << u"my\\server"_s << false;
+        QTest::newRow("dot") << u"."_s << false;
+        QTest::newRow("dotdot") << u".."_s << false;
+        QTest::newRow("trailing-dot") << u"server. "_s << false;
+        QTest::newRow("newline") << u"server\n"_s << false;
+        QTest::newRow("tab") << u"\tserver"_s << false;
+        QTest::newRow("null") << QString(1, QChar(0)) << false;
+        QTest::newRow("unicode-control") << QString(1, QChar(0x0085)) << false;
+        QTest::newRow("unicode-line-separator") << u"Home\u2028Work"_s << false;
+        QTest::newRow("unicode-paragraph-separator") << u"Home\u2029Work"_s << false;
+    }
+
+    void connectionNameValidation()
+    {
+        QFETCH(QString, name);
+        QFETCH(bool, valid);
+        QCOMPARE(Account::isValidConnectionName(name), valid);
+        const auto account = Account::create();
+        QVERIFY(account->setConnectionName(u"Original"_s));
+        QSignalSpy changed(account.data(), &Account::connectionNameChanged);
+        QSignalSpy saved(account.data(), &Account::wantsAccountSaved);
+        QCOMPARE(account->setConnectionName(name), valid);
+        QCOMPARE(account->connectionName(), valid ? name.trimmed() : u"Original"_s);
+        QCOMPARE(changed.count(), valid ? 1 : 0);
+        QCOMPARE(saved.count(), valid ? 1 : 0);
+    }
+
+    void connectionNameChangesOnlyLocalLabel()
+    {
+        const auto account = Account::create();
+        account->setUrl(QUrl(u"https://cloud.example.invalid:8443"_s));
+        account->setDavUser(u"alice"_s);
+        account->setDavDisplayName(u"Alice"_s);
+        const auto displayName = account->displayName();
+        const auto prettyName = account->prettyName();
+        const auto userId = account->userIdAtHostWithPort();
+        const auto url = account->url();
+        const auto id = account->id();
+        QSignalSpy changed(account.data(), &Account::connectionNameChanged);
+        QSignalSpy saved(account.data(), &Account::wantsAccountSaved);
+        QSignalSpy davNameChanged(account.data(), &Account::accountChangedDisplayName);
+        QSignalSpy prettyNameChanged(account.data(), &Account::prettyNameChanged);
+        QVERIFY(account->setConnectionName(u"  Мой сервер  "_s));
+        QCOMPARE(account->connectionName(), u"Мой сервер"_s);
+        QVERIFY(account->setConnectionName(u"Мой сервер"_s));
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(saved.count(), 1);
+        QCOMPARE(qvariant_cast<AccountPtr>(saved.first().first()), account);
+        QVERIFY(account->setConnectionName(u"   "_s));
+        QVERIFY(account->connectionName().isEmpty());
+        QVERIFY(account->setConnectionName({}));
+        QCOMPARE(changed.count(), 2);
+        QCOMPARE(saved.count(), 2);
+        QCOMPARE(davNameChanged.count(), 0);
+        QCOMPARE(prettyNameChanged.count(), 0);
+        QCOMPARE(account->displayName(), displayName);
+        QCOMPARE(account->prettyName(), prettyName);
+        QCOMPARE(account->davDisplayName(), u"Alice"_s);
+        QCOMPARE(account->davUser(), u"alice"_s);
+        QCOMPARE(account->userIdAtHostWithPort(), userId);
+        QCOMPARE(account->url(), url);
+        QCOMPARE(account->id(), id);
+    }
+#endif
+
     void testAccount_setLimitSettings_globalNetworkLimitFallback()
     {
         using LimitSetting = Account::AccountNetworkTransferLimitSetting;

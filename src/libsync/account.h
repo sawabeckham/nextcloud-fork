@@ -143,6 +143,13 @@ public:
     /// The name of the account as shown in the toolbar
     [[nodiscard]] QString displayName() const;
 
+#ifdef NEXTCLOUD_FORK
+    /// Local connection label; an empty value selects the automatic server name.
+    [[nodiscard]] QString connectionName() const;
+    [[nodiscard]] bool setConnectionName(const QString &name);
+    [[nodiscard]] static bool isValidConnectionName(const QString &name);
+#endif
+
     /// The name of the account as shown in the windows shortcut explorer
     [[nodiscard]] QString shortcutName() const;
 
@@ -493,6 +500,9 @@ Q_SIGNALS:
     void accountChangedAvatar();
     void accountChangedDisplayName();
     void prettyNameChanged();
+#ifdef NEXTCLOUD_FORK
+    void connectionNameChanged();
+#endif
     void askUserForMnemonicChanged();
     void enforceUseHardwareTokenEncryptionChanged();
     void encryptionHardwareTokenDriverPathChanged();
@@ -557,6 +567,9 @@ private:
     QString _davUser;
     QString _davDisplayName;
     QString _displayName;
+#ifdef NEXTCLOUD_FORK
+    QString _connectionName;
+#endif
     QTimer _pushNotificationsReconnectTimer;
 #ifndef TOKEN_AUTH_ONLY
     QImage _avatarImg;

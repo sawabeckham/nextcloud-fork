@@ -37,6 +37,9 @@ constexpr auto urlC = "url";
 constexpr auto authTypeC = "authType";
 constexpr auto userC = "user";
 constexpr auto displayNameC = "displayName";
+#ifdef NEXTCLOUD_FORK
+constexpr auto connectionNameC = "connectionName";
+#endif
 constexpr auto httpUserC = "http_user";
 constexpr auto accountUuidC = "account_uuid";
 constexpr auto davUserC = "dav_user";
@@ -412,6 +415,9 @@ void AccountManager::saveAccountHelper(const AccountPtr &account, QSettings &set
     settings.setValue(QLatin1String(accountUuidC), account->_uuid);
     settings.setValue(QLatin1String(davUserC), account->_davUser);
     settings.setValue(QLatin1String(displayNameC), account->davDisplayName());
+#ifdef NEXTCLOUD_FORK
+    settings.setValue(QLatin1StringView(connectionNameC), account->connectionName());
+#endif
     settings.setValue(QLatin1String(serverVersionC), account->_serverVersion);
     settings.setValue(QLatin1String(serverColorC), account->_serverColor);
     settings.setValue(QLatin1String(serverTextColorC), account->_serverTextColor);
@@ -662,6 +668,11 @@ AccountPtr AccountManager::loadAccountHelper(QSettings &settings)
 
     acc->_settingsMap.insert(QLatin1String(userC), settings.value(userC));
     acc->setDavDisplayName(settings.value(QLatin1String(displayNameC), "").toString());
+#ifdef NEXTCLOUD_FORK
+    if (!acc->setConnectionName(settings.value(QLatin1StringView(connectionNameC)).toString())) {
+        qCWarning(lcAccountManager) << "Ignoring invalid local connection name";
+    }
+#endif
     const QString authTypePrefix = authType + "_";
     const auto settingsChildKeys = settings.childKeys();
     for (const auto &key : settingsChildKeys) {

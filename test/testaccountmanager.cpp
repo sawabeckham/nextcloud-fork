@@ -307,6 +307,67 @@ private Q_SLOTS:
         QVERIFY(ConfigFile().serverManagedSettings().enforced.isEmpty());
     }
 
+#ifdef NEXTCLOUD_FORK
+    void connectionNamePersistence_data()
+    {
+        QTest::addColumn<QVariant>("storedName");
+        QTest::addColumn<QString>("expectedName");
+        QTest::newRow("old-config-missing-key") << QVariant{} << QString{};
+        QTest::newRow("custom-name") << QVariant(u"Мой сервер 😀"_s) << u"Мой сервер 😀"_s;
+        QTest::newRow("normalize-stored-name") << QVariant(u"  Server  "_s) << u"Server"_s;
+        QTest::newRow("invalid-stored-name") << QVariant(u"bad/name"_s) << QString{};
+    }
+
+    void connectionNamePersistence()
+    {
+        QFETCH(QVariant, storedName);
+        QFETCH(QString, expectedName);
+        AccountManager::instance()->shutdown();
+        {
+            QSettings settings(ConfigFile().configFile(), QSettings::IniFormat);
+            settings.clear();
+            settings.beginGroup(u"Accounts"_s);
+            settings.setValue(u"version"_s, accountSettingsVersion);
+            settings.beginGroup(u"named-account"_s);
+            settings.setValue(u"version"_s, accountSettingsVersion);
+            settings.setValue(u"url"_s, u"https://cloud.example.invalid"_s);
+            settings.setValue(u"authType"_s, u"http"_s);
+            settings.setValue(u"http_user"_s, u"alice"_s);
+            settings.setValue(u"dav_user"_s, u"alice"_s);
+            settings.setValue(u"displayName"_s, u"Alice"_s);
+            if (storedName.isValid()) {
+                settings.setValue(u"connectionName"_s, storedName);
+            }
+            settings.sync();
+        }
+        QCOMPARE(AccountManager::instance()->restore(false), AccountManager::AccountsRestoreSuccess);
+        {
+            const auto accounts = AccountManager::instance()->accounts();
+            QCOMPARE(accounts.size(), 1);
+            const auto account = accounts.first()->account();
+            QCOMPARE(account->connectionName(), expectedName);
+            QCOMPARE(account->davDisplayName(), u"Alice"_s);
+            QVERIFY(account->setConnectionName(u"Updated connection"_s));
+            const auto settings = ConfigFile::settingsWithGroup(u"Accounts"_s);
+            settings->beginGroup(account->id());
+            QCOMPARE(settings->value(u"connectionName"_s).toString(), u"Updated connection"_s);
+            QCOMPARE(settings->value(u"displayName"_s).toString(), u"Alice"_s);
+        }
+        AccountManager::instance()->shutdown();
+        QCOMPARE(AccountManager::instance()->restore(false), AccountManager::AccountsRestoreSuccess);
+        {
+            const auto accounts = AccountManager::instance()->accounts();
+            QCOMPARE(accounts.size(), 1);
+            QCOMPARE(accounts.first()->account()->connectionName(), u"Updated connection"_s);
+            QVERIFY(accounts.first()->account()->setConnectionName({}));
+        }
+        AccountManager::instance()->shutdown();
+        QCOMPARE(AccountManager::instance()->restore(false), AccountManager::AccountsRestoreSuccess);
+        QCOMPARE(AccountManager::instance()->accounts().first()->account()->connectionName(), QString{});
+        AccountManager::instance()->shutdown();
+    }
+#endif
+
     void restoresPublicShareLinkWithBasicCredentials()
     {
         const auto accountId = QStringLiteral("public-share");

@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased — целевая 0.6.6
+
+- Установщик сам запрашивает штатное закрытие Nextcloud Fork через `--quit` в сеансе пользователя и ждёт до 30 секунд. При отказе/зависании установка прекращается без принудительного завершения клиента. Текст приветствия обновлён. Новый PKG пока не собран.
+
 ## [0.6.5] — 2026-11-03, PKG подготовлен; не установлен
 
 - Локальное название подключения: редактор в Connection settings, сохранение и передача имени существующему домену Finder. Пустое имя возвращает адрес сервера; адрес подключения и имя приложения сохраняются.

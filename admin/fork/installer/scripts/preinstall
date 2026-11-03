@@ -10,9 +10,28 @@ if [ -L '/Applications/RomanenkoApp' ] || [ -L '/Applications/RomanenkoApp/Nextc
     echo 'Refusing to install through a symbolic link.' >&2
     exit 1
 fi
-# Do not replace a bundle while the client is using it, including a copy in the build cache.
+# Ask the existing client's single-instance channel to quit as the console user.
+# Never run its executable as root or terminate a syncing process forcibly.
 if /usr/bin/pgrep -x 'Nextcloud Fork' >/dev/null; then
-    echo 'Quit Nextcloud Fork using its menu, then run this installer again.' >&2
-    exit 1
+    app='/Applications/RomanenkoApp/Nextcloud Fork.app/Contents/MacOS/Nextcloud Fork'
+    console_user=$(/usr/bin/stat -f%Su /dev/console)
+    console_uid=$(/usr/bin/id -u "$console_user" 2>/dev/null)
+    if [ -z "$console_uid" ] || [ "$console_uid" = 0 ] || [ "$console_user" = loginwindow ] || [ ! -x "$app" ]; then
+        echo 'Cannot request a safe exit. Quit Nextcloud Fork manually, then retry installation.' >&2
+        exit 1
+    fi
+    echo 'Requesting Nextcloud Fork to quit before updating.'
+    /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" "$app" --quit &
+    # This also bounds a stalled quit request; no replacement while a client remains.
+    quit_timeout_seconds=30
+    elapsed_seconds=0
+    while /usr/bin/pgrep -x 'Nextcloud Fork' >/dev/null; do
+        if [ "$elapsed_seconds" -ge "$quit_timeout_seconds" ]; then
+            echo 'Nextcloud Fork did not quit within 30 seconds. Quit it manually, then retry installation.' >&2
+            exit 1
+        fi
+        /bin/sleep 1
+        elapsed_seconds=$((elapsed_seconds + 1))
+    done
 fi
 exit 0

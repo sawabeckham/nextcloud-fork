@@ -18,3 +18,8 @@ Finder получает имя существующего mapped domain с пр�
 ## Прежние решения
 
 Имя приложения Nextcloud Fork сохранить; hostname-only проверен в0.6.4. Swift/native rewrite без Qt отложен владельцем. Подробные альтернативы SFL, системные naming flags и helper-domain hypothesis остаются в MACOS_FINDER_LOCATION_NAMING.md. Данные, сохранённые после test identity incident01.11, не удалять/не сливать без отдельной проверки; real-data reconciliation не завершена.
+
+
+## 03.11.2026 — штатный quit в preinstall (Unreleased0.6.6)
+
+По просьбе владельца заменяем требование ручного закрытия на single-instance CLI --quit в console user session. AppleScript уже вернул -128 на этом Mac; CLI официально поддержан Application::parseOptions. Не используем SIGKILL, root запуск GUI или остановку File Provider. Ожидание30s ограничено; при невыходе безопасный отказ до замены payload. Текущий опубликованный локально PKG0.6.5 неизменяем; новая упаковка только следующим выпуском.

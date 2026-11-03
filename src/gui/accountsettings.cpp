@@ -1400,6 +1400,11 @@ void AccountSettings::showConnectionSettingsDialog()
     layout->addWidget(networkSettings);
 
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+#ifdef NEXTCLOUD_FORK
+    if (qApp->property("ui_lang").toString().startsWith("ru"_L1)) {
+        buttonBox->button(QDialogButtonBox::Close)->setText(u"Закрыть"_s);
+    }
+#endif
     connect(buttonBox, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     layout->addWidget(buttonBox);
 

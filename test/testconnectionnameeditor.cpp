@@ -135,6 +135,52 @@ private Q_SLOTS:
         QCOMPARE(account->userIdAtHostWithPort(), originalIdentity);
     }
 
+    void editorLayoutAndLanguage_data()
+    {
+        QTest::addColumn<QString>("language");
+        QTest::addColumn<QString>("saveText");
+        QTest::addColumn<int>("width");
+        QTest::newRow("russian-compact") << u"ru_RU"_s << u"Сохранить"_s << 480;
+        QTest::newRow("russian-wide") << u"ru"_s << u"Сохранить"_s << 900;
+        QTest::newRow("english") << u"en"_s << u"Save"_s << 560;
+    }
+
+    void editorLayoutAndLanguage()
+    {
+        QFETCH(QString, language);
+        QFETCH(QString, saveText);
+        QFETCH(int, width);
+        const auto previousLanguage = qApp->property("ui_lang");
+        qApp->setProperty("ui_lang", language);
+        ConnectionNameEditor editor(createAccount());
+        qApp->setProperty("ui_lang", previousLanguage);
+        editor.resize(width, editor.sizeHint().height());
+        editor.show();
+        QCoreApplication::processEvents();
+        const auto name = editor.findChild<QLineEdit *>(u"connectionNameEdit"_s);
+        const auto save = editor.findChild<QPushButton *>(u"saveConnectionNameButton"_s);
+        const auto reset = editor.findChild<QPushButton *>(u"resetConnectionNameButton"_s);
+        QVERIFY(name);
+        QVERIFY(save);
+        QVERIFY(reset);
+        QCOMPARE(save->text(), saveText);
+        QCOMPARE(name->geometry().center().y(), save->geometry().center().y());
+        QVERIFY(name->geometry().right() < save->geometry().left());
+        QVERIFY(name->width() > editor.width() / 2);
+        QVERIFY(name->fontMetrics().horizontalAdvance(name->placeholderText()) < name->width());
+        QVERIFY(reset->geometry().top() > name->geometry().bottom());
+        QVERIFY(!save->isEnabled());
+        QVERIFY(!reset->isEnabled());
+        name->setText(u"Моё облако"_s);
+        QVERIFY(save->isEnabled());
+        save->click();
+        QVERIFY(!save->isEnabled());
+        if (language.startsWith(u"ru")) {
+            QCOMPARE(name->accessibleName(), u"Название в Finder"_s);
+            QCOMPARE(reset->text(), u"Использовать адрес сервера"_s);
+        }
+    }
+
     void testConnectionNameEditorApplyResetAndReopen()
     {
         const auto account = createAccount();

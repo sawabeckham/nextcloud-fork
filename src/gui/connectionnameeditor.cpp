@@ -10,10 +10,11 @@
 #include "macOS/fileproviderdomainmanager.h"
 #endif
 
-#include <QFormLayout>
+#include <QApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -26,8 +27,8 @@ ConnectionNameEditor::ConnectionNameEditor(const AccountPtr &account, QWidget *p
     , _account(account)
     , _nameEdit(new QLineEdit(account->connectionName(), this))
     , _validationLabel(new QLabel(this))
-    , _saveButton(new QPushButton(tr("Save name"), this))
-    , _resetButton(new QPushButton(tr("Use server address"), this))
+    , _saveButton(new QPushButton(localizedText("Save", "Сохранить"), this))
+    , _resetButton(new QPushButton(localizedText("Use server address", "Использовать адрес сервера"), this))
 {
     setObjectName("connectionNameEditor"_L1);
     _nameEdit->setObjectName("connectionNameEdit"_L1);
@@ -42,17 +43,24 @@ ConnectionNameEditor::ConnectionNameEditor(const AccountPtr &account, QWidget *p
 
     const auto layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    const auto form = new QFormLayout;
-    form->addRow(tr("Connection name"), _nameEdit);
-    layout->addLayout(form);
-    const auto help = new QLabel(tr("Shown for this connection in Finder. Leave empty to use the server address."), this);
+    const auto title = new QLabel(localizedText("Name in Finder", "Название в Finder"), this);
+    title->setBuddy(_nameEdit);
+    layout->addWidget(title);
+    const auto inputRow = new QHBoxLayout;
+    _nameEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    _nameEdit->setAccessibleName(title->text());
+    inputRow->addWidget(_nameEdit, 1);
+    inputRow->addWidget(_saveButton);
+    layout->addLayout(inputRow);
+    const auto help = new QLabel(localizedText("Enter a name, then save it. Leave the field empty to show the server address.",
+                                               "Введите название и нажмите «Сохранить». Пустое поле — адрес сервера."),
+                                 this);
     help->setWordWrap(true);
     layout->addWidget(help);
     layout->addWidget(_validationLabel);
     const auto actions = new QHBoxLayout;
     actions->addWidget(_resetButton);
     actions->addStretch();
-    actions->addWidget(_saveButton);
     layout->addLayout(actions);
 
     connect(_nameEdit, &QLineEdit::textChanged, this, &ConnectionNameEditor::updateActions);
@@ -65,6 +73,16 @@ ConnectionNameEditor::ConnectionNameEditor(const AccountPtr &account, QWidget *p
         updateActions();
     });
     updateActions();
+}
+
+QString ConnectionNameEditor::localizedText(const char *source, const char *russian)
+{
+    // Use the language selected by Application, including an explicit user override.
+    const auto language = qApp->property("ui_lang").toString();
+    if (!language.isEmpty() && QLocale(language).language() == QLocale::Russian) {
+        return QString::fromUtf8(russian);
+    }
+    return tr(source);
 }
 
 bool ConnectionNameEditor::isNameSupported() const
@@ -82,8 +100,10 @@ bool ConnectionNameEditor::isNameSupported() const
 void ConnectionNameEditor::updateActions()
 {
     const auto supported = isNameSupported();
-    _validationLabel->setText(supported ? QString{}
-                                        : tr("Choose a shorter name without file separators, line breaks, or an application or document extension."));
+    _validationLabel->setText(supported
+                                  ? QString{}
+                                  : localizedText("Choose a shorter name without file separators, line breaks, or an application or document extension.",
+                                                  "Выберите короткое название без разделителей пути, переносов строк и расширений приложений или документов."));
     _validationLabel->setVisible(!supported);
     _saveButton->setEnabled(supported && _nameEdit->text().trimmed() != _account->connectionName());
     _resetButton->setEnabled(!_nameEdit->text().isEmpty());

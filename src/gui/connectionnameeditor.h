@@ -23,6 +23,7 @@ public:
     void showFinderUpdateError(const QString &message);
 
 private:
+    [[nodiscard]] static QString localizedText(const char *source, const char *russian);
     void updateActions();
     void saveName();
     [[nodiscard]] bool isNameSupported() const;

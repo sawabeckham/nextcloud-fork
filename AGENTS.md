@@ -280,3 +280,14 @@ Validate GUI changes in stages, using the smallest suitable test or harness:
 - If there are changes in the directory located in `./shell_integration/MacOSX/NextcloudIntegration`, then verify it still builds and runs tests successfully by running `xcodebuild build -scheme desktopclient` in that directory. In case of build errors, try to fix them.
 - If there are changes in `./src`, then verify the main product still builds successfully by running `xcodebuild build -target NextcloudDev` in the directory `./shell_integration/MacOSX/NextcloudIntegration`. In case of build errors, try to fix them.
 - Do not attempt in place modifications of the built app bundle at `/Applications/NextcloudDev.app` because it will break the valid signing and corrupt the app as a whole. A rebuild is necessary instead.
+
+## Owner requirement: maintained documentation (2026-11-01)
+
+Read doc/PROJECT_HANDOFF.md, doc/CURRENT_STATE.md, FORK.md and doc/DOCUMENTATION_POLICY.md after checking the actual Git state and open PRs. Update affected technical docs and state/handoff records in the same completed step as code. Record actual validation, unverified boundaries, remaining work and next action before the final response. Preserve contribution, licensing and testing rules above.
+
+
+## Owner release policy —03.11.2026 (replaces per-edit version bumps)
+
+Nextcloud Fork is a large, long-lived project. Accumulate work under Unreleased; keep the last released version in metadata until the owner explicitly requests a release. Current released0.6.4, target0.6.5 unreleased. Do not build, package, install, tag, deploy or publish during ordinary development. Compiled tests/build requirements above are deferred and must be reported as unrun until an explicit command authorizes them. Static checks that do not build artifacts are allowed. Candidate fixes within one release do not increment again. Preserve existing production/data boundaries. This overrides historical instructions to bump version after every edit.
+
+Read [documentation index](doc/INDEX.md), [development/release procedure](doc/DEVELOPMENT.md), [architecture](doc/ARCHITECTURE.md), [decisions](doc/DECISIONS.md), [development log](doc/DEVELOPMENT_LOG.md), [third-party provenance](doc/THIRD_PARTY.md), and the current state/handoff when relevant. Keep this established doc/ structure rather than creating parallel docs/ copies.

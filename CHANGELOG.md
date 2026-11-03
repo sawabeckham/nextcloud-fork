@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Nextcloud Fork, целевая0.6.5
+
+- В исходниках: локальное название подключения с сохранением в настройках, редактор в Connection settings и передача этого имени существующему домену Finder. Пустое имя возвращает адрес сервера.
+- Добавлены источники regression tests. Компиляция, запуск новых тестов и реальный Finder пока не проверены; это не выпущенная функция.
+- Последний выпущенный и установленный номер0.6.4 сохранён. Выпуск/сборка только по отдельной команде владельца; подробности и ограничения в doc/PROJECT_HANDOFF.md.
+
 ## [3.8.2] - 2023-05-16
 
 ### Added

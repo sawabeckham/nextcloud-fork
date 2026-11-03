@@ -9,6 +9,10 @@
 
 The Nextcloud Desktop Client is an app to synchronize files from Nextcloud Server with your computer available for Windows, macOS and Linux.
 
+Документация разработки форка: [индекс](doc/INDEX.md). Новые изменения накапливаются в Unreleased; сборка и выпуск выполняются по отдельной команде владельца.
+
+О macOS-форке: [возможности, версия и установка в RomanenkoApp](FORK.md). `./build.sh` создаёт приложение и PKG-установщик; цветной значок форка отличается синим градиентом.
+
 <p align="center">
     <img src="doc/images/main_dialog_christine.png" alt="Desktop Client on Windows" width="450">
 </p>
@@ -95,7 +99,7 @@ docker run \
     nextcloud
 ```
 
-This simple test server already suffices in the most cases. For more advanced server test deployments we also recommend [Nextcloud development environment on Docker Compose](https://juliusknorr.github.io/nextcloud-docker-dev/).
+This simple test server already suffices in the most cases. For more advanced server test deployments we also recommend [Nextcloud development environment on Docker Compose](https://nextcloud.github.io/nextcloud-docker-dev/).
 
 ## Get in touch 💬
 * [📋 Forum](https://help.nextcloud.com)
@@ -117,3 +121,7 @@ You can also [get professional support for Nextcloud and the desktop client](htt
     WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
     or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
     for more details.
+
+## Для продолжения разработки
+
+Инструкции для любого агента — [AGENTS.md](AGENTS.md); актуальное состояние и передача работы — [doc/PROJECT_HANDOFF.md](doc/PROJECT_HANDOFF.md).

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased — целевая0.6.8
+## [0.6.8] — 2026-11-07, кандидат релиза
 
 - Перенесён upstream master cc930c7c (35.1.0 alpha): GRDB migration, File Provider cancellation/scanning/permissions/locking и network redirect protection. Основные isolated tests/consuming builds прошли; live migration/новый release PKG не выполнялись.
 

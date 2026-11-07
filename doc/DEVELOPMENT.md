@@ -43,3 +43,12 @@ Preinstall запрашивает graceful exit установленного к�
 
 
 Проверка автозапуска postinstall (Unreleased0.6.8): `python3 test/hybrid/test_installer_launch.py`, изолированные commands, без запуска настоящего клиента. В следующем configure зарегистрируется ForkInstallerLaunch. Реальную root installation и следующий release PKG выполнять отдельно по команде владельца.
+
+
+## Diagnostic master port —07.11.2026
+
+Root configure использует тот же physical validation-build-20261101/fork-0.6.1/client и fork/hybrid/unsigned/test-isolation flags. Native consuming target all и schema desktopclient успешно собраны без установки. Package tests: из shell_integration/MacOSX/NextcloudFileProviderKit запускать swift test --no-parallel --jobs4 --scratch-path <physical>/swift-tests --config-path <physical>/swift-test-config; existingPackage.resolved/checkouts переиспользуются, реальные database directories не передаются. Фактические versions/revisions записаны в CURRENT_STATE/THIRD_PARTY. Root workspace Package.resolved больше не tracked upstream, не возвращать его старую35.0.1 версию автоматически.
+
+Qt redirect test requires Homebrew qthttpserver6.12.0_1 (совпадает с qtbase6.12.0_2/qtwebsockets6.12.0_1), теперь проверяется build.sh при CLIENT_TESTING=ON. Проверить HAVE_QHTTPSERVER=1 в compile_commands И наличие testDirectUrlCredentials в MOC/Qt test functions: после установки модуля один reconfigure без regeneration moc оказался недостаточен. Удалять весь build не нужно; обновить source mtime/сгенерировать только NextcloudPropagatorTest moc, пересобрать target и запустить explicit testDirectUrlCredentials.
+
+Перед будущей0.6.8 установкой отдельно подготовить актуальный metadata backup/rollback для Realm→SQLite. Диагностический build не является разрешением этой миграции; production bundles не запускать с пустыми settings.

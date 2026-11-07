@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#include <QtTest>
-#include <QTemporaryDir>
-#include <QStandardPaths>
-#include <QSet>
 #include <QNetworkProxy>
+#include <QSet>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QtTest>
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -230,9 +230,8 @@ private Q_SLOTS:
     void testForcedSourceContributesOnlyForcedKeys()
     {
         FakeForcedSource source(200,
-            {QStringLiteral("skipUpdateCheck")},
-            QVariantMap{{QStringLiteral("skipUpdateCheck"), true},
-                {QStringLiteral("autoUpdateCheck"), false}});
+                                {QStringLiteral("skipUpdateCheck")},
+                                QVariantMap{{QStringLiteral("skipUpdateCheck"), true}, {QStringLiteral("autoUpdateCheck"), false}});
 
         QCOMPARE(source.type(), SettingSourceType::PlatformPolicy);
         QCOMPARE(source.enforcement(), EnforcementState::Enforced);
@@ -268,7 +267,8 @@ private Q_SLOTS:
                                 QStringLiteral("proxyHost"),
                                 QStringLiteral("proxyPort"),
                                 QStringLiteral("newBigFolderSizeLimit"),
-                                QStringLiteral("stopSyncingExistingFoldersOverLimit")}) {
+                                QStringLiteral("stopSyncingExistingFoldersOverLimit"),
+                                QStringLiteral("wizardSelectiveSyncDefaultNothing")}) {
             const auto spec = ManagedSettingsSchema::find(key);
             QVERIFY2(spec.has_value(), qPrintable(key));
             QVERIFY2(spec->enforceable, qPrintable(key));
@@ -624,15 +624,19 @@ private Q_SLOTS:
     void testSanitizeKeepsAcceptedKeysDropsUnknown()
     {
         ServerManagedSettings raw;
-        raw.defaults = QVariantMap{{QStringLiteral("autoUpdateCheck"), false}, {QStringLiteral("bogus"), 1}};
+        raw.defaults =
+            QVariantMap{{QStringLiteral("autoUpdateCheck"), false}, {QStringLiteral("wizardSelectiveSyncDefaultNothing"), true}, {QStringLiteral("bogus"), 1}};
         raw.enforced = QVariantMap{{QStringLiteral("virtualFilesMode"), QStringLiteral("wincfapi")},
-            {QStringLiteral("secretKey"), QStringLiteral("x")}};
+                                   {QStringLiteral("wizardSelectiveSyncDefaultNothing"), true},
+                                   {QStringLiteral("secretKey"), QStringLiteral("x")}};
 
         const auto clean = sanitizeServerManagedSettings(raw);
 
         QVERIFY(clean.defaults.contains(QStringLiteral("autoUpdateCheck")));
+        QVERIFY(!clean.defaults.contains(QStringLiteral("wizardSelectiveSyncDefaultNothing")));
         QVERIFY(!clean.defaults.contains(QStringLiteral("bogus")));
         QVERIFY(clean.enforced.contains(QStringLiteral("virtualFilesMode")));
+        QVERIFY(!clean.enforced.contains(QStringLiteral("wizardSelectiveSyncDefaultNothing")));
         QVERIFY(!clean.enforced.contains(QStringLiteral("secretKey")));
     }
 
@@ -770,12 +774,14 @@ private Q_SLOTS:
     void testCapabilitiesParsesDesktopClientManagedSettings()
     {
         const QVariantMap caps{
-            {QStringLiteral("support"), QVariantMap{
-                {QStringLiteral("desktopClient"), QVariantMap{
-                    {QStringLiteral("schemaVersion"), 1},
-                    {QStringLiteral("enforced"), QVariantMap{{QStringLiteral("skipUpdateCheck"), true}}},
-                }},
-            }},
+            {QStringLiteral("support"),
+             QVariantMap{
+                 {QStringLiteral("desktopClient"),
+                  QVariantMap{
+                      {QStringLiteral("schemaVersion"), 1},
+                      {QStringLiteral("enforced"), QVariantMap{{QStringLiteral("skipUpdateCheck"), true}}},
+                  }},
+             }},
         };
         const Capabilities capabilities(caps);
         const auto parsed = capabilities.desktopClientManagedSettings();
@@ -906,6 +912,30 @@ private Q_SLOTS:
         QVERIFY(!managedProxy.typeManaged);
         QVERIFY(!managedProxy.portManaged);
         QVERIFY(!managedProxy.portEnforced);
+    }
+
+    void testDevicePolicyControlsWizardSelectiveSyncDefault()
+    {
+        QTemporaryDir dir;
+        ConfigFile config;
+        config.setConfDir(dir.path());
+
+        {
+            QSettings settings(config.configFile(), QSettings::IniFormat);
+            settings.setValue(QString::fromLatin1(ConfigFile::wizardSelectiveSyncDefaultNothingC), false);
+            settings.sync();
+        }
+        ConfigFile::setDeviceSourcesFactory([] {
+            std::vector<std::unique_ptr<SettingSource>> sources;
+            sources.push_back(std::make_unique<MapSource>(SettingSourceType::PlatformPolicy,
+                                                          EnforcementState::Enforced,
+                                                          200,
+                                                          QVariantMap{{QString::fromLatin1(ConfigFile::wizardSelectiveSyncDefaultNothingC), true}}));
+            return sources;
+        });
+
+        QVERIFY(config.wizardSelectiveSyncDefaultNothing());
+        QVERIFY(config.isEnforced(QString::fromLatin1(ConfigFile::wizardSelectiveSyncDefaultNothingC)));
     }
 
     // A server default must not reach the application proxy, which every account shares.
@@ -1182,8 +1212,7 @@ private Q_SLOTS:
         settings.enforced = QVariantMap{{QStringLiteral("virtualFilesMode"), QStringLiteral("off")}};
         config.setServerManagedSettings(settings);
 
-        QCOMPARE(config.sourceLabel(QStringLiteral("virtualFilesMode")),
-                 QStringLiteral("Managed by your organization"));
+        QCOMPARE(config.sourceLabel(QStringLiteral("virtualFilesMode")), QStringLiteral("Managed by your organization"));
     }
 
     void testManagedVirtualFilesModeReportsDefaultAndEnforcement()
@@ -1234,8 +1263,8 @@ private Q_SLOTS:
         ServerManagedSettings raw;
         raw.defaults = QVariantMap{{QStringLiteral("skipUpdateCheck"), true}};
         raw.enforced = QVariantMap{{QStringLiteral("skipUpdateCheck"), true},
-            {QStringLiteral("proxyHost"), QStringLiteral("evil.example.com")},
-            {QStringLiteral("virtualFilesMode"), QStringLiteral("wincfapi")}};
+                                   {QStringLiteral("proxyHost"), QStringLiteral("evil.example.com")},
+                                   {QStringLiteral("virtualFilesMode"), QStringLiteral("wincfapi")}};
 
         const auto clean = sanitizeServerManagedSettings(raw);
 

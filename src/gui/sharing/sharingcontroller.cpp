@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 
+#include "account.h"
 #include "addrecipientjob.h"
 #include "addsourcejob.h"
 #include "createsharejob.h"
@@ -99,11 +100,6 @@ bool SharingController::destroyingShare() const
 QString SharingController::shareDestructionError() const
 {
     return _shareDestructionError;
-}
-
-bool SharingController::resolvingInternalLink() const
-{
-    return _resolvingInternalLink;
 }
 
 QString SharingController::internalLinkError() const
@@ -209,22 +205,19 @@ void SharingController::fetchShareDetails(Share *share)
     job->start();
 }
 
-void SharingController::requestInternalLink(const QString &remotePath, const QString &numericFileId)
+void SharingController::requestInternalLink(const QString &numericFileId)
 {
-    if (!_account || remotePath.isEmpty() || _resolvingInternalLink) {
+    if (!_account) {
         return;
     }
 
     setInternalLinkError({});
-    setResolvingInternalLink(true);
-    fetchPrivateLinkUrl(_account, remotePath, numericFileId.toUtf8(), this, [this](const QString &url) {
-        setResolvingInternalLink(false);
-        if (url.isEmpty()) {
-            setInternalLinkError(tr("Could not retrieve the internal link."));
-            return;
-        }
-        Q_EMIT internalLinkResolved(url);
-    });
+    const auto url = _account->internalLinkUrl(numericFileId.toUtf8());
+    if (url.isEmpty()) {
+        setInternalLinkError(tr("Could not retrieve the internal link."));
+        return;
+    }
+    Q_EMIT internalLinkResolved(url.toString(QUrl::FullyEncoded));
 }
 
 bool SharingController::beginShareCreation(const QString &fileId)
@@ -334,10 +327,7 @@ void SharingController::destroyShare(Share *share)
     job->start();
 }
 
-void SharingController::addRecipient(Share *share,
-                                     const QString &recipientType,
-                                     const QString &recipientValue,
-                                     const QString &recipientInstance)
+void SharingController::addRecipient(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance)
 {
     if (!_account) {
         qCWarning(lcSharingController) << "attempted to add a new recipient to a share without an account set";
@@ -365,10 +355,7 @@ void SharingController::addRecipient(Share *share,
     job->start();
 }
 
-void SharingController::removeRecipient(Share *share,
-                                        const QString &recipientType,
-                                        const QString &recipientValue,
-                                        const QString &recipientInstance)
+void SharingController::removeRecipient(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance)
 {
     if (!_account) {
         qCWarning(lcSharingController) << "attempted to remove a recipient from a share without an account set";
@@ -396,10 +383,7 @@ void SharingController::removeRecipient(Share *share,
     job->start();
 }
 
-void SharingController::updateRecipientSecret(Share *share,
-                                              const QString &recipientType,
-                                              const QString &recipientValue,
-                                              const QString &recipientInstance)
+void SharingController::updateRecipientSecret(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance)
 {
     if (!_account) {
         qCWarning(lcSharingController) << "attempted to update a recipient secret without an account set";
@@ -887,15 +871,6 @@ void SharingController::setShareDestructionError(const QString &error)
     }
     _shareDestructionError = error;
     Q_EMIT shareDestructionErrorChanged();
-}
-
-void SharingController::setResolvingInternalLink(bool resolvingInternalLink)
-{
-    if (_resolvingInternalLink == resolvingInternalLink) {
-        return;
-    }
-    _resolvingInternalLink = resolvingInternalLink;
-    Q_EMIT resolvingInternalLinkChanged();
 }
 
 void SharingController::setInternalLinkError(const QString &error)

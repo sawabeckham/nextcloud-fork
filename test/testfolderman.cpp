@@ -8,9 +8,11 @@
  * any purpose.
  */
 
-#include <qglobal.h>
+#include <QDesktopServices>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <qglobal.h>
 
 #include "QtTest/qtestcase.h"
 #include "account.h"
@@ -43,11 +45,17 @@ bool itemDidCompleteSuccessfully(const ItemCompletedSpy &spy, const QString &pat
     return false;
 }
 
-class TestFolderMan: public QObject
+class TestFolderMan : public QObject
 {
     Q_OBJECT
 
     QPointer<FolderMan> _fm;
+    QList<QUrl> _openedInternalLinks;
+
+    Q_INVOKABLE void captureInternalLink(const QUrl &url)
+    {
+        _openedInternalLinks.append(url);
+    }
 
 Q_SIGNALS:
     void incomingShareDeleted();
@@ -72,6 +80,63 @@ private Q_SLOTS:
     void cleanup()
     {
         ConfigFile::setDeviceSourcesFactory({});
+    }
+
+    void internalLinkSocketAction()
+    {
+        QTemporaryDir configDir;
+        QVERIFY(configDir.isValid());
+        ConfigFile::setConfDir(configDir.path());
+        FolderMan::resetInstance();
+        _fm = FolderMan::instance();
+        FakeFolder fakeFolder{FileInfo{}};
+        const auto cleanupFolders = qScopeGuard([this] {
+            _fm->unloadAndDeleteAllFolders();
+        });
+        const auto account = fakeFolder.account();
+        account->setUrl(QUrl{u"https://example.com/nextcloud"_s});
+        const auto folder = _fm->addFolder(&fakeFolder.accountState(), folderDefinition(fakeFolder.localPath()));
+        QVERIFY(folder);
+        folder->setSyncPaused(true);
+
+        SyncJournalFileRecord record;
+        record._path = "file.txt"_ba;
+        record._fileId = "42oc123xyz987e"_ba;
+        record._inode = 1;
+        record._modtime = QDateTime::currentSecsSinceEpoch();
+        record._type = ItemTypeFile;
+        record._etag = "etag"_ba;
+        QVERIFY(folder->journalDb()->setFileRecord(record));
+
+        _openedInternalLinks.clear();
+        QDesktopServices::setUrlHandler(u"https"_s, this, "captureInternalLink");
+        const auto cleanupHandler = qScopeGuard([] {
+            QDesktopServices::unsetUrlHandler(u"https"_s);
+        });
+        const auto openLink = [this](const QString &path) {
+            auto *listener = static_cast<OCC::SocketListener *>(nullptr);
+            return QMetaObject::invokeMethod(_fm->socketApi(),
+                                             "command_OPEN_PRIVATE_LINK",
+                                             Qt::DirectConnection,
+                                             QGenericArgument("QString", &path),
+                                             QGenericArgument("OCC::SocketListener*", &listener));
+        };
+        const auto localFile = fakeFolder.localPath() + u"file.txt"_s;
+        account->setCapabilities({});
+        QVERIFY(openLink(localFile));
+        QCOMPARE(_openedInternalLinks, QList<QUrl>{QUrl{u"https://example.com/nextcloud/index.php/f/42"_s}});
+
+        account->setCapabilities({{u"globalscale"_s, QVariantMap{{u"token"_s, u"abc123"_s}}}});
+        QVERIFY(openLink(localFile));
+        QCOMPARE(_openedInternalLinks.size(), 2);
+        QCOMPARE(_openedInternalLinks.last(), QUrl{u"https://example.com/nextcloud/index.php/gf/abc123/42"_s});
+
+        QVERIFY(openLink(configDir.path() + u"/outside.txt"_s));
+        QVERIFY(openLink(fakeFolder.localPath() + u"missing.txt"_s));
+        record._fileId.clear();
+        QVERIFY(folder->journalDb()->setFileRecord(record));
+        QVERIFY(openLink(localFile));
+        QCOMPARE(_openedInternalLinks.size(), 2);
     }
 
     void testDeleteEncryptedFiles()
@@ -111,7 +176,7 @@ private Q_SLOTS:
                 const QUrlQuery urlQuery(req.url());
                 const auto formatParam = urlQuery.queryItemValue(QStringLiteral("format"));
 
-                if(fileId == fakeFileId && formatParam == QStringLiteral("json")) {
+                if (fileId == fakeFileId && formatParam == QStringLiteral("json")) {
                     reply = new FakePayloadReply(op, req, QJsonDocument().toJson(), this);
                 } else {
                     reply = new FakeErrorReply(op, req, this, 400, fake400Response);
@@ -124,11 +189,12 @@ private Q_SLOTS:
         fakeQnam->setOverride(fakeQnamOverride);
 
         const auto account = Account::create();
-        const auto capabilities = QVariantMap {
-            {QStringLiteral("end-to-end-encryption"), QVariantMap {
-                {QStringLiteral("enabled"), true},
-                {QStringLiteral("api-version"), QString::number(2.0)},
-            }},
+        const auto capabilities = QVariantMap{
+            {QStringLiteral("end-to-end-encryption"),
+             QVariantMap{
+                 {QStringLiteral("enabled"), true},
+                 {QStringLiteral("api-version"), QString::number(2.0)},
+             }},
         };
         account->setCapabilities(capabilities);
         account->setCredentials(new FakeCredentials{fakeQnam});
@@ -248,12 +314,12 @@ private Q_SLOTS:
                 return reply;
             }
 
-           fakeFolder.remoteModifier().remove(filePathRelative);
-           reply = new FakePayloadReply(op, req, {}, nullptr);
+            fakeFolder.remoteModifier().remove(filePathRelative);
+            reply = new FakePayloadReply(op, req, {}, nullptr);
 
-           Q_EMIT incomingShareDeleted();
+            Q_EMIT incomingShareDeleted();
 
-           return reply;
+            return reply;
         });
 
         QSignalSpy incomingShareDeletedSignal(this, &TestFolderMan::incomingShareDeleted);
@@ -313,7 +379,7 @@ private Q_SLOTS:
         QUrl url("http://example.de");
         auto *cred = new HttpCredentialsTest("testuser", "secret");
         account->setCredentials(cred);
-        account->setUrl( url );
+        account->setUrl(url);
 
         AccountStatePtr newAccountState(new AccountState(account));
         FolderMan *folderman = FolderMan::instance();
@@ -352,8 +418,12 @@ private Q_SLOTS:
         // The following both fail because they are already sync folders even if for another account
         QUrl url3("http://anotherexample.org");
         url3.setUserName("dummy");
-        QCOMPARE(folderman->checkPathValidityForNewFolder(dirPath + "/sub/ownCloud1", url3).second, QString("Please choose a different location. %1 is already being used as a sync folder.").arg(QDir::toNativeSeparators(dirPath + "/sub/ownCloud1")));
-        QCOMPARE(folderman->checkPathValidityForNewFolder(dirPath + "/ownCloud2", url3).second, QString("Please choose a different location. %1 is already being used as a sync folder.").arg(QDir::toNativeSeparators(dirPath + "/ownCloud2")));
+        QCOMPARE(folderman->checkPathValidityForNewFolder(dirPath + "/sub/ownCloud1", url3).second,
+                 QString("Please choose a different location. %1 is already being used as a sync folder.")
+                     .arg(QDir::toNativeSeparators(dirPath + "/sub/ownCloud1")));
+        QCOMPARE(
+            folderman->checkPathValidityForNewFolder(dirPath + "/ownCloud2", url3).second,
+            QString("Please choose a different location. %1 is already being used as a sync folder.").arg(QDir::toNativeSeparators(dirPath + "/ownCloud2")));
 
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath).second.isNull());
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath + "/sub/ownCloud1/folder").second.isNull());
@@ -376,7 +446,8 @@ private Q_SLOTS:
         // link 3 points to an existing sync folder. To make it fail, the account must be the same
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath + "/link3", url2).second.isNull());
         // while with a different account, this is fine
-        QCOMPARE(folderman->checkPathValidityForNewFolder(dirPath + "/link3", url3).second, QString("Please choose a different location. %1 is already being used as a sync folder.").arg(dirPath + "/link3"));
+        QCOMPARE(folderman->checkPathValidityForNewFolder(dirPath + "/link3", url3).second,
+                 QString("Please choose a different location. %1 is already being used as a sync folder.").arg(dirPath + "/link3"));
 
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath + "/link4").second.isNull());
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath + "/link3/folder").second.isNull());
@@ -412,7 +483,6 @@ private Q_SLOTS:
         // Invalid paths
         QVERIFY(!folderman->checkPathValidityForNewFolder("").second.isNull());
 
-
         // REMOVE ownCloud2 from the filesystem, but keep a folder sync'ed to it.
         QDir(dirPath + "/ownCloud2/").removeRecursively();
         QVERIFY(!folderman->checkPathValidityForNewFolder(dirPath + "/ownCloud2/blublu").second.isNull());
@@ -442,7 +512,7 @@ private Q_SLOTS:
         QUrl url("http://example.de");
         auto *cred = new HttpCredentialsTest("testuser", "secret");
         account->setCredentials(cred);
-        account->setUrl( url );
+        account->setUrl(url);
         url.setUserName(cred->user());
 
         AccountStatePtr newAccountState(new AccountState(account));
@@ -453,8 +523,7 @@ private Q_SLOTS:
 
         // TEST
 
-        QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/oc", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
-                 QString(dirPath + "/oc"));
+        QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/oc", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath), QString(dirPath + "/oc"));
         QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/ownCloud", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
                  QString(dirPath + "/ownCloud3"));
         QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/ownCloud2", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
@@ -463,16 +532,15 @@ private Q_SLOTS:
                  QString(dirPath + "/ownCloud2/foo"));
         QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/ownCloud2/bar", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
                  QString(dirPath + "/ownCloud2/bar"));
-        QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/sub", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
-                 QString(dirPath + "/sub2"));
+        QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/sub", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath), QString(dirPath + "/sub2"));
 
         // REMOVE ownCloud2 from the filesystem, but keep a folder sync'ed to it.
         // We should still not suggest this folder as a new folder.
         QDir(dirPath + "/ownCloud2/").removeRecursively();
         QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/ownCloud", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
-            QString(dirPath + "/ownCloud3"));
+                 QString(dirPath + "/ownCloud3"));
         QCOMPARE(folderman->findGoodPathForNewSyncFolder(dirPath + "/ownCloud2", url, FolderMan::GoodPathStrategy::AllowOnlyNewPath),
-            QString(dirPath + "/ownCloud22"));
+                 QString(dirPath + "/ownCloud22"));
     }
 
     void testProcessingFileIdsPushNotification()
@@ -501,7 +569,12 @@ private Q_SLOTS:
         auto user1 = createAccount("user1");
         auto user2 = createAccount("user2");
 
-        const auto addFolderForTesting = [this, &dirPath](AccountState * const account, const QString &alias, const QString &localPath, const QString &targetPath, const int rootFileId, const QList<qint64> &fileIds) -> void {
+        const auto addFolderForTesting = [this, &dirPath](AccountState *const account,
+                                                          const QString &alias,
+                                                          const QString &localPath,
+                                                          const QString &targetPath,
+                                                          const int rootFileId,
+                                                          const QList<qint64> &fileIds) -> void {
             FolderDefinition definition;
             definition.alias = alias;
             definition.localPath = dirPath + localPath;
@@ -514,10 +587,8 @@ private Q_SLOTS:
 
             auto journal = folder->journalDb();
             for (const auto &fileId : fileIds) {
-                static int lastInode = 0;
                 SyncJournalFileRecord record;
                 record._fileId = u"%1oc123xyz987e"_s.arg(fileId, 8, 10, '0'_L1).toLocal8Bit();
-                record._inode = ++lastInode;
                 record._modtime = QDateTime::currentSecsSinceEpoch();
                 record._path = u"item%1"_s.arg(fileId).toLocal8Bit();
                 record._type = ItemTypeFile;
@@ -526,7 +597,8 @@ private Q_SLOTS:
             }
         };
 
-        const auto verifyFolderSyncChangesOnReceivedFileIdNotification = [this](AccountState * const user, const QList<qint64> &fileIds, const QStringList &expectedFolderAliasesToSync) -> void {
+        const auto verifyFolderSyncChangesOnReceivedFileIdNotification =
+            [this](AccountState *const user, const QList<qint64> &fileIds, const QStringList &expectedFolderAliasesToSync) -> void {
             QStringList folderAliasesToBeSynced = {};
 
             _fm->_scheduledFolders.clear();
@@ -541,10 +613,8 @@ private Q_SLOTS:
             for (const auto &signalParameters : std::as_const(spy)) {
                 QVERIFY(signalParameters.size() == 1);
                 const auto folderAlias = signalParameters.front().value<Folder *>()->alias();
-                QVERIFY2(
-                    expectedFolderAliasesToSync.contains(folderAlias),
-                    qPrintable("Unexpected folder alias '%1'; expected were [%2]"_L1.arg(folderAlias, expectedFolderAliasesToSync.join(", ")))
-                );
+                QVERIFY2(expectedFolderAliasesToSync.contains(folderAlias),
+                         qPrintable("Unexpected folder alias '%1'; expected were [%2]"_L1.arg(folderAlias, expectedFolderAliasesToSync.join(", "))));
                 folderAliasesToBeSynced.append(folderAlias);
             }
 
@@ -553,26 +623,26 @@ private Q_SLOTS:
             QCOMPARE(folderAliasesToBeSynced, expectedFolderAliasesToSync);
         };
 
-        addFolderForTesting(user1, "0", "/user1_root",      "/",          10, {11, 12, 13, 50});
+        addFolderForTesting(user1, "0", "/user1_root", "/", 10, {11, 12, 13, 50});
         addFolderForTesting(user1, "1", "/user1_subfolder", "/subfolder", 15, {16, 17, 18, 50});
-        addFolderForTesting(user2, "2", "/user2_root",      "/",          20, {21, 22, 23, 50});
+        addFolderForTesting(user2, "2", "/user2_root", "/", 20, {21, 22, 23, 50});
 
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {10},                  {"0"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {11},                  {"0"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {13, 11},              {"0"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {15},                  {"1"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {16},                  {"1"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {18, 16},              {"1"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {15, 11},              {"0", "1"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {11, 16, 21},          {"0", "1"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {50},                  {"0", "1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {10}, {"0"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {11}, {"0"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {13, 11}, {"0"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {15}, {"1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {16}, {"1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {18, 16}, {"1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {15, 11}, {"0", "1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {11, 16, 21}, {"0", "1"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {50}, {"0", "1"});
         verifyFolderSyncChangesOnReceivedFileIdNotification(user1, {20, 21, 22, 23, 404}, {});
 
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {20},                  {"2"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {21},                  {"2"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {23, 21},              {"2"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {11, 16, 21},          {"2"});
-        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {50},                  {"2"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {20}, {"2"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {21}, {"2"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {23, 21}, {"2"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {11, 16, 21}, {"2"});
+        verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {50}, {"2"});
         verifyFolderSyncChangesOnReceivedFileIdNotification(user2, {10, 11, 17, 18, 404}, {});
     }
 

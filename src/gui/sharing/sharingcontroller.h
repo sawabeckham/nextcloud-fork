@@ -33,7 +33,6 @@ class SharingController : public QObject
     Q_PROPERTY(QString shareCreationError READ shareCreationError NOTIFY shareCreationErrorChanged)
     Q_PROPERTY(bool destroyingShare READ destroyingShare NOTIFY destroyingShareChanged)
     Q_PROPERTY(QString shareDestructionError READ shareDestructionError NOTIFY shareDestructionErrorChanged)
-    Q_PROPERTY(bool resolvingInternalLink READ resolvingInternalLink NOTIFY resolvingInternalLinkChanged)
     Q_PROPERTY(QString internalLinkError READ internalLinkError NOTIFY internalLinkErrorChanged)
 
 public:
@@ -58,9 +57,6 @@ public:
     /** @brief Returns the last share deletion error, or an empty string after a new attempt starts. */
     [[nodiscard]] QString shareDestructionError() const;
 
-    /** @brief Returns whether the item's internal link is currently being resolved. */
-    [[nodiscard]] bool resolvingInternalLink() const;
-
     /** @brief Returns the last internal-link resolution error. */
     [[nodiscard]] QString internalLinkError() const;
 
@@ -69,7 +65,7 @@ public Q_SLOTS:
      * @brief Loads all shares associated with a file without creating a share.
      *
      * @param fileId Server file ID used to filter the shares request
-    */
+     */
     void initialize(const QString &fileId);
 
     /**
@@ -83,10 +79,7 @@ public Q_SLOTS:
      * @param recipientValue Server-defined recipient identifier
      * @param recipientInstance Remote server identifying a federated recipient, or an empty string for a local recipient
      */
-    void createShareForRecipient(const QString &fileId,
-                                 const QString &recipientType,
-                                 const QString &recipientValue,
-                                 const QString &recipientInstance = {});
+    void createShareForRecipient(const QString &fileId, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance = {});
 
     /** @brief Creates and activates a public-link share for the specified file. */
     void createPublicLink(const QString &fileId);
@@ -95,12 +88,11 @@ public Q_SLOTS:
     void fetchShareDetails(Share *share);
 
     /**
-     * @brief Resolves the server-provided internal link for the specified file.
+     * @brief Builds the internal link for the specified file using the account capabilities.
      *
-     * @param remotePath Path of the file relative to the account's WebDAV root
-     * @param numericFileId Numeric file ID used if the server does not expose a private-link property
+     * @param numericFileId Numeric server file ID; an empty ID produces an error
      */
-    void requestInternalLink(const QString &remotePath, const QString &numericFileId);
+    void requestInternalLink(const QString &numericFileId);
 
     /** @brief Permanently removes a share managed by this controller. */
     void destroyShare(Share *share);
@@ -110,30 +102,21 @@ public Q_SLOTS:
      *
      * @param recipientInstance Remote server identifying a federated recipient, or an empty string for a local recipient
      */
-    void addRecipient(Share *share,
-                      const QString &recipientType,
-                      const QString &recipientValue,
-                      const QString &recipientInstance = {});
+    void addRecipient(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance = {});
 
     /**
      * @brief Removes a recipient from a share.
      *
      * @param recipientInstance Remote server identifying a federated recipient, or an empty string for a local recipient
      */
-    void removeRecipient(Share *share,
-                         const QString &recipientType,
-                         const QString &recipientValue,
-                         const QString &recipientInstance = {});
+    void removeRecipient(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance = {});
 
     /**
      * @brief Generates and assigns a new secret to a recipient.
      *
      * @param recipientInstance Remote server identifying a federated recipient, or an empty string for a local recipient
      */
-    void updateRecipientSecret(Share *share,
-                               const QString &recipientType,
-                               const QString &recipientValue,
-                               const QString &recipientInstance = {});
+    void updateRecipientSecret(Share *share, const QString &recipientType, const QString &recipientValue, const QString &recipientInstance = {});
 
     void setPermission(Share *share, const QString &permissionClass, bool enabled);
     /** @brief Enables or disables one permission for one recipient of a share. */
@@ -168,13 +151,10 @@ Q_SIGNALS:
     /** @brief Emitted when shareDestructionError changes. */
     void shareDestructionErrorChanged();
 
-    /** @brief Emitted when resolvingInternalLink changes. */
-    void resolvingInternalLinkChanged();
-
     /** @brief Emitted when internalLinkError changes. */
     void internalLinkErrorChanged();
 
-    /** @brief Emitted with the server-provided internal link after it is resolved. */
+    /// Emitted with the internal link generated from the account capabilities.
     void internalLinkResolved(const QString &url);
 
     /** @brief Emitted after a recipient was added and the Share was updated. */
@@ -241,7 +221,6 @@ private:
     void setShareCreationError(const QString &error);
     void setDestroyingShare(bool destroyingShare);
     void setShareDestructionError(const QString &error);
-    void setResolvingInternalLink(bool resolvingInternalLink);
     void setInternalLinkError(const QString &error);
     [[nodiscard]] Share *shareById(const QString &shareId) const;
     /**
@@ -258,7 +237,6 @@ private:
     QString _shareCreationError;
     bool _destroyingShare = false;
     QString _shareDestructionError;
-    bool _resolvingInternalLink = false;
     QString _internalLinkError;
     QHash<QString, int> _pendingDraftUpdates;
     QSet<QString> _activationRequested;

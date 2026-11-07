@@ -22,30 +22,30 @@
 
 #include "lockfilejobs.h"
 
-#include "common/syncjournaldb.h"
-#include "common/asserts.h"
 #include "clientsideencryption.h"
+#include "common/asserts.h"
+#include "common/syncjournaldb.h"
 #include "ocsuserstatusconnector.h"
 
 #include "config.h"
 
 #include <QLoggingCategory>
-#include <QNetworkReply>
 #include <QNetworkAccessManager>
-#include <QSslSocket>
 #include <QNetworkCookieJar>
 #include <QNetworkProxy>
+#include <QNetworkReply>
+#include <QSslSocket>
 
-#include <QFileInfo>
-#include <QDir>
-#include <QSslKey>
 #include <QAuthenticator>
-#include <QStandardPaths>
+#include <QDir>
+#include <QFileInfo>
+#include <QHttpMultiPart>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonArray>
 #include <QLoggingCategory>
-#include <QHttpMultiPart>
+#include <QSslKey>
+#include <QStandardPaths>
 
 #include <qsslconfiguration.h>
 
@@ -54,8 +54,10 @@
 #include "creds/abstractcredentials.h"
 
 using namespace QKeychain;
+using namespace Qt::StringLiterals;
 
-namespace {
+namespace
+{
 constexpr int pushNotificationsReconnectInterval = 1000 * 60 * 2;
 constexpr int usernamePrefillServerVersionMinSupportedMajor = 24;
 constexpr int checksumRecalculateRequestServerVersionMinSupportedMajor = 24;
@@ -73,7 +75,8 @@ bool isPushNotificationsWebSocketUrlAllowed(const QUrl &accountUrl, const QUrl &
 }
 }
 
-namespace OCC {
+namespace OCC
+{
 Q_LOGGING_CATEGORY(lcAccount, "nextcloud.sync.account", QtInfoMsg)
 const char app_password[] = "_app-password";
 
@@ -90,8 +93,7 @@ Account::Account(QObject *parent)
     _pushNotificationsReconnectTimer.setInterval(pushNotificationsReconnectInterval);
     connect(&_pushNotificationsReconnectTimer, &QTimer::timeout, this, &Account::trySetupPushNotifications);
 
-    connect(&_e2e, &ClientSideEncryption::userCertificateNeedsMigrationChanged,
-            this, &Account::userCertificateNeedsMigrationChanged);
+    connect(&_e2e, &ClientSideEncryption::userCertificateNeedsMigrationChanged, this, &Account::userCertificateNeedsMigrationChanged);
 }
 
 AccountPtr Account::create()
@@ -102,7 +104,7 @@ AccountPtr Account::create()
     return acc;
 }
 
-ClientSideEncryption* Account::e2e()
+ClientSideEncryption *Account::e2e()
 {
     // Qt expects everything in the connect to be a pointer, so return a pointer.
     return &_e2e;
@@ -353,14 +355,10 @@ void Account::setCredentials(AbstractCredentials *cred)
     } else if (_managedProxy.isManaged) {
         applyProxyToNetworkAccessManager();
     }
-    connect(_networkAccessManager.data(), &QNetworkAccessManager::sslErrors,
-        this, &Account::slotHandleSslErrors);
-    connect(_networkAccessManager.data(), &QNetworkAccessManager::proxyAuthenticationRequired,
-        this, &Account::proxyAuthenticationRequired);
-    connect(_credentials.data(), &AbstractCredentials::fetched,
-        this, &Account::slotCredentialsFetched);
-    connect(_credentials.data(), &AbstractCredentials::asked,
-        this, &Account::slotCredentialsAsked);
+    connect(_networkAccessManager.data(), &QNetworkAccessManager::sslErrors, this, &Account::slotHandleSslErrors);
+    connect(_networkAccessManager.data(), &QNetworkAccessManager::proxyAuthenticationRequired, this, &Account::proxyAuthenticationRequired);
+    connect(_credentials.data(), &AbstractCredentials::fetched, this, &Account::slotCredentialsFetched);
+    connect(_credentials.data(), &AbstractCredentials::asked, this, &Account::slotCredentialsAsked);
 
     trySetupPushNotifications();
 }
@@ -442,10 +440,24 @@ QUrl Account::davUrl() const
     return Utility::concatUrlPath(url(), davPath());
 }
 
-QUrl Account::deprecatedPrivateLinkUrl(const QByteArray &numericFileId) const
+QUrl Account::internalLinkUrl(const QByteArray &numericFileId) const
 {
-    return Utility::concatUrlPath(_userVisibleUrl,
-        QLatin1String("/index.php/f/") + QUrl::toPercentEncoding(QString::fromLatin1(numericFileId)));
+    if (numericFileId.isEmpty()) {
+        return {};
+    }
+
+    const auto token = _capabilities.globalScaleToken();
+    const auto path = token.isEmpty() ? u"/index.php/f/"_s : u"/index.php/gf/"_s + QString::fromLatin1(QUrl::toPercentEncoding(token)) + u'/';
+    auto link = _userVisibleUrl;
+    auto basePath = link.path(QUrl::FullyEncoded);
+    if (basePath.endsWith(u'/')) {
+        basePath.chop(1);
+    }
+    // Keep escaped separators inside the token and file ID as path-component data.
+    link.setPath(basePath + path + QString::fromLatin1(QUrl::toPercentEncoding(QString::fromUtf8(numericFileId))), QUrl::TolerantMode);
+    link.setQuery(QString{});
+    link.setFragment(QString{});
+    return link;
 }
 
 /**
@@ -489,12 +501,10 @@ void Account::resetNetworkAccessManager()
     _networkAccessManager = QSharedPointer<QNetworkAccessManager>(_credentials->createQNAM(), &QObject::deleteLater);
 
     _networkAccessManager->setCookieJar(jar); // takes ownership of the old cookie jar
-    _networkAccessManager->setProxy(proxy);   // Remember proxy (issue #2108)
+    _networkAccessManager->setProxy(proxy); // Remember proxy (issue #2108)
 
-    connect(_networkAccessManager.data(), &QNetworkAccessManager::sslErrors,
-        this, &Account::slotHandleSslErrors);
-    connect(_networkAccessManager.data(), &QNetworkAccessManager::proxyAuthenticationRequired,
-        this, &Account::proxyAuthenticationRequired);
+    connect(_networkAccessManager.data(), &QNetworkAccessManager::sslErrors, this, &Account::slotHandleSslErrors);
+    connect(_networkAccessManager.data(), &QNetworkAccessManager::proxyAuthenticationRequired, this, &Account::proxyAuthenticationRequired);
 }
 
 QNetworkAccessManager *Account::networkAccessManager() const
@@ -507,10 +517,7 @@ QSharedPointer<QNetworkAccessManager> Account::sharedNetworkAccessManager() cons
     return _networkAccessManager;
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
-                                       const QUrl &url,
-                                       QNetworkRequest req,
-                                       QIODevice *data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QIODevice *data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -528,10 +535,7 @@ QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
     return _networkAccessManager->sendCustomRequest(req, verb, data);
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
-                                       const QUrl &url,
-                                       QNetworkRequest req,
-                                       const QByteArray &data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, const QByteArray &data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -549,10 +553,7 @@ QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
     return _networkAccessManager->sendCustomRequest(req, verb, data);
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
-                                       const QUrl &url,
-                                       QNetworkRequest req,
-                                       QHttpMultiPart *data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QHttpMultiPart *data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -673,8 +674,7 @@ void Account::slotHandleSslErrors(QNetworkReply *reply, QList<QSslError> errors)
     QString out;
     QDebug(&out) << "SSL-Errors happened for url " << reply->url().toString();
     for (const auto &error : errors) {
-        QDebug(&out) << "\tError in " << error.certificate() << ":"
-                     << error.errorString() << "(" << error.error() << ")"
+        QDebug(&out) << "\tError in " << error.certificate() << ":" << error.errorString() << "(" << error.error() << ")"
                      << "\n";
     }
 
@@ -854,9 +854,7 @@ int Account::serverVersionInt() const
 {
     // FIXME: Use Qt 5.5 QVersionNumber
     const auto components = serverVersion().split('.');
-    return makeServerVersion(components.value(0).toInt(),
-        components.value(1).toInt(),
-        components.value(2).toInt());
+    return makeServerVersion(components.value(0).toInt(), components.value(1).toInt(), components.value(2).toInt());
 }
 
 bool Account::serverHasMountRootProperty() const
@@ -877,7 +875,8 @@ bool Account::serverVersionUnsupported() const
         return false;
     }
     return serverVersionInt() < makeServerVersion(NEXTCLOUD_SERVER_VERSION_MIN_SUPPORTED_MAJOR,
-               NEXTCLOUD_SERVER_VERSION_MIN_SUPPORTED_MINOR, NEXTCLOUD_SERVER_VERSION_MIN_SUPPORTED_PATCH);
+                                                  NEXTCLOUD_SERVER_VERSION_MIN_SUPPORTED_MINOR,
+                                                  NEXTCLOUD_SERVER_VERSION_MIN_SUPPORTED_PATCH);
 }
 
 bool Account::secureFileDropSupported() const
@@ -924,7 +923,7 @@ void Account::setServerVersion(const QString &version)
 
 void Account::writeAppPasswordOnce(const QString &appPassword)
 {
-    if (_wroteAppPassword) { 
+    if (_wroteAppPassword) {
         return;
     }
 
@@ -937,11 +936,7 @@ void Account::writeAppPasswordOnce(const QString &appPassword)
         return;
     }
 
-    const auto keychainKey = AbstractCredentials::keychainKey(
-                url().toString(),
-                davUser() + app_password,
-                id()
-    );
+    const auto keychainKey = AbstractCredentials::keychainKey(url().toString(), davUser() + app_password, id());
 
     auto job = new WritePasswordJob(Theme::instance()->appName());
     job->setInsecureFallback(false);
@@ -964,11 +959,7 @@ void Account::writeAppPasswordOnce(const QString &appPassword)
 void Account::retrieveAppPassword()
 {
     const auto key = QString(credentials()->user() + app_password);
-    const auto keychainKey = AbstractCredentials::keychainKey(
-                url().toString(),
-                key,
-                id()
-    );
+    const auto keychainKey = AbstractCredentials::keychainKey(url().toString(), key, id());
 
     auto job = new ReadPasswordJob(Theme::instance()->appName());
     job->setInsecureFallback(false);
@@ -988,11 +979,7 @@ void Account::retrieveAppPassword()
 
 void Account::deleteAppPassword()
 {
-    const auto keychainKey = AbstractCredentials::keychainKey(
-                url().toString(),
-                credentials()->user() + app_password,
-                id()
-    );
+    const auto keychainKey = AbstractCredentials::keychainKey(url().toString(), credentials()->user() + app_password, id());
 
     if (keychainKey.isEmpty()) {
         qCDebug(lcAccount) << "appPassword is empty";
@@ -1040,8 +1027,7 @@ void Account::fetchDirectEditors(const QUrl &directEditingURL, const QString &di
     }
 
     // Check for the directEditing capability
-    if (!directEditingURL.isEmpty() &&
-        (directEditingETag.isEmpty() || directEditingETag != _lastDirectEditingETag)) {
+    if (!directEditingURL.isEmpty() && (directEditingETag.isEmpty() || directEditingETag != _lastDirectEditingETag)) {
         // Fetch the available editors and their mime types
         auto job = new JsonApiJob(sharedFromThis(), QLatin1String("ocs/v2.php/apps/files/api/v1/directEditing"));
         QObject::connect(job, &JsonApiJob::jsonReceived, this, &Account::slotDirectEditingRecieved);
@@ -1061,7 +1047,7 @@ void Account::slotDirectEditingRecieved(const QJsonDocument &json)
         const QString id = editor.value("id").toString();
         const QString name = editor.value("name").toString();
 
-        if(!id.isEmpty() && !name.isEmpty()) {
+        if (!id.isEmpty() && !name.isEmpty()) {
             auto mimeTypes = editor.value("mimetypes").toArray();
             auto optionalMimeTypes = editor.value("optionalMimetypes").toArray();
 
@@ -1105,7 +1091,7 @@ void Account::setLockFileState(const QString &serverRelativePath,
                                const QString &remoteSyncPathWithTrailingSlash,
                                const QString &localSyncPath,
                                const QString &etag,
-                               SyncJournalDb * const journal,
+                               SyncJournalDb *const journal,
                                const SyncFileItem::LockStatus lockStatus,
                                const SyncFileItem::LockOwnerType lockOwnerType)
 {
@@ -1115,31 +1101,40 @@ void Account::setLockFileState(const QString &serverRelativePath,
         return;
     }
     lockStatusJobInProgress.push_back(lockStatus);
-    auto job = std::make_unique<LockFileJob>(sharedFromThis(), journal, serverRelativePath, remoteSyncPathWithTrailingSlash, localSyncPath, etag, lockStatus, lockOwnerType);
+    auto job = std::make_unique<LockFileJob>(sharedFromThis(),
+                                             journal,
+                                             serverRelativePath,
+                                             remoteSyncPathWithTrailingSlash,
+                                             localSyncPath,
+                                             etag,
+                                             lockStatus,
+                                             lockOwnerType);
     connect(job.get(), &LockFileJob::finishedWithoutError, this, [this, serverRelativePath, lockStatus]() {
         removeLockStatusChangeInprogress(serverRelativePath, lockStatus);
         Q_EMIT lockFileSuccess();
     });
-    connect(job.get(), &LockFileJob::finishedWithError, this, [lockStatus, serverRelativePath, this](const int httpErrorCode, const QString &errorString, const QString &lockOwnerName) {
-        removeLockStatusChangeInprogress(serverRelativePath, lockStatus);
-        auto errorMessage = QString{};
-        const auto filePath = serverRelativePath.mid(1);
+    connect(job.get(),
+            &LockFileJob::finishedWithError,
+            this,
+            [lockStatus, serverRelativePath, this](const int httpErrorCode, const QString &errorString, const QString &lockOwnerName) {
+                removeLockStatusChangeInprogress(serverRelativePath, lockStatus);
+                auto errorMessage = QString{};
+                const auto filePath = serverRelativePath.mid(1);
 
-        if (httpErrorCode == LockFileJob::LOCKED_HTTP_ERROR_CODE) {
-            errorMessage = tr("File %1 is already locked by %2.").arg(filePath, lockOwnerName);
-        } else if (lockStatus == SyncFileItem::LockStatus::LockedItem) {
-             errorMessage = tr("Lock operation on %1 failed with error %2").arg(filePath, errorString);
-        } else if (lockStatus == SyncFileItem::LockStatus::UnlockedItem) {
-             errorMessage = tr("Unlock operation on %1 failed with error %2").arg(filePath, errorString);
-        }
-        Q_EMIT lockFileError(errorMessage);
-    });
+                if (httpErrorCode == LockFileJob::LOCKED_HTTP_ERROR_CODE) {
+                    errorMessage = tr("File %1 is already locked by %2.").arg(filePath, lockOwnerName);
+                } else if (lockStatus == SyncFileItem::LockStatus::LockedItem) {
+                    errorMessage = tr("Lock operation on %1 failed with error %2").arg(filePath, errorString);
+                } else if (lockStatus == SyncFileItem::LockStatus::UnlockedItem) {
+                    errorMessage = tr("Unlock operation on %1 failed with error %2").arg(filePath, errorString);
+                }
+                Q_EMIT lockFileError(errorMessage);
+            });
     job->start();
     static_cast<void>(job.release());
 }
 
-SyncFileItem::LockStatus Account::fileLockStatus(SyncJournalDb * const journal,
-                                                 const QString &folderRelativePath) const
+SyncFileItem::LockStatus Account::fileLockStatus(SyncJournalDb *const journal, const QString &folderRelativePath) const
 {
     SyncJournalFileRecord record;
     if (journal->getFileRecord(folderRelativePath, &record)) {
@@ -1149,8 +1144,7 @@ SyncFileItem::LockStatus Account::fileLockStatus(SyncJournalDb * const journal,
     return SyncFileItem::LockStatus::UnlockedItem;
 }
 
-bool Account::fileCanBeUnlocked(SyncJournalDb * const journal,
-                                const QString &folderRelativePath) const
+bool Account::fileCanBeUnlocked(SyncJournalDb *const journal, const QString &folderRelativePath) const
 {
     SyncJournalFileRecord record;
     if (journal->getFileRecord(folderRelativePath, &record)) {
@@ -1159,14 +1153,13 @@ bool Account::fileCanBeUnlocked(SyncJournalDb * const journal,
             return false;
         }
 
-        if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::UserLock) &&
-            record._lockstate._lockOwnerId != sharedFromThis()->davUser()) {
+        if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::UserLock)
+            && record._lockstate._lockOwnerId != sharedFromThis()->davUser()) {
             qCWarning(lcAccount()) << folderRelativePath << "cannot be unlocked: user lock from" << record._lockstate._lockOwnerId;
             return false;
         }
 
-        if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::TokenLock) &&
-            record._lockstate._lockToken.isEmpty()) {
+        if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::TokenLock) && record._lockstate._lockToken.isEmpty()) {
             qCWarning(lcAccount()) << folderRelativePath << "cannot be unlocked: token lock without known token";
             return false;
         }
@@ -1270,7 +1263,10 @@ void Account::setAskUserForMnemonic(const bool ask)
     Q_EMIT askUserForMnemonicChanged();
 }
 
-void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, const QString &remoteSyncRootPath, const QString &subPath, SyncJournalDb *journalForFolder)
+void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise,
+                               const QString &remoteSyncRootPath,
+                               const QString &subPath,
+                               SyncJournalDb *journalForFolder)
 {
     qCInfo(lcAccount()) << "ls col job requested for" << subPath;
 
@@ -1286,7 +1282,7 @@ void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, co
 
     listFolderJob->setProperties(props);
 
-    QObject::connect(listFolderJob, &OCC::LsColJob::networkError, this, [promise, subPath] (QNetworkReply *reply) {
+    QObject::connect(listFolderJob, &OCC::LsColJob::networkError, this, [promise, subPath](QNetworkReply *reply) {
         if (reply) {
             qCWarning(lcAccount()) << "ls col job" << subPath << "error" << reply->errorString();
         }
@@ -1295,7 +1291,7 @@ void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, co
         promise->finish();
     });
 
-    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithError, this, [promise, subPath] (QNetworkReply *reply) {
+    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithError, this, [promise, subPath](QNetworkReply *reply) {
         if (reply) {
             qCWarning(lcAccount()) << "ls col job" << subPath << "error" << reply->errorString();
         }
@@ -1304,7 +1300,7 @@ void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, co
         promise->finish();
     });
 
-    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithoutError, this, [promise, subPath] () {
+    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithoutError, this, [promise, subPath]() {
         qCInfo(lcAccount()) << "ls col job" << subPath << "finished";
         promise->finish();
     });
@@ -1316,43 +1312,48 @@ void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, co
         syncRootPath = syncRootPath.mid(baseRemotePath.size());
     }
 
-    QObject::connect(listFolderJob, &OCC::LsColJob::directoryListingIterated, this, [promise, remoteSyncRootPath, syncRootPath, journalForFolder, this](const QString &completeDavPath, const QMap<QString, QString> &properties) {
-        if (!sender()->property("ignoredFirst").toBool()) {
-            qCDebug(lcAccount()) << "skip first item";
-            sender()->setProperty("ignoredFirst", true);
-            return;
-        }
+    QObject::connect(
+        listFolderJob,
+        &OCC::LsColJob::directoryListingIterated,
+        this,
+        [promise, remoteSyncRootPath, syncRootPath, journalForFolder, this](const QString &completeDavPath, const QMap<QString, QString> &properties) {
+            if (!sender()->property("ignoredFirst").toBool()) {
+                qCDebug(lcAccount()) << "skip first item";
+                sender()->setProperty("ignoredFirst", true);
+                return;
+            }
 
-        qCInfo(lcAccount()) << "ls col job" << syncRootPath << "new file" << completeDavPath << properties.count();
+            qCInfo(lcAccount()) << "ls col job" << syncRootPath << "new file" << completeDavPath << properties.count();
 
-        const auto slash = completeDavPath.lastIndexOf('/');
-        const auto itemFileName = completeDavPath.mid(slash + 1);
-        const auto absoluteItemPathName = syncRootPath.isEmpty() ? itemFileName : Utility::noTrailingSlashPath(syncRootPath) + '/' + itemFileName;
+            const auto slash = completeDavPath.lastIndexOf('/');
+            const auto itemFileName = completeDavPath.mid(slash + 1);
+            const auto absoluteItemPathName = syncRootPath.isEmpty() ? itemFileName : Utility::noTrailingSlashPath(syncRootPath) + '/' + itemFileName;
 
-        auto currentItemDbRecord = SyncJournalFileRecord{};
-        if (journalForFolder->getFileRecord(absoluteItemPathName, &currentItemDbRecord) && currentItemDbRecord.isValid()) {
-            qCWarning(lcAccount()) << "skip existing item" << absoluteItemPathName;
-            return;
-        }
+            auto currentItemDbRecord = SyncJournalFileRecord{};
+            if (journalForFolder->getFileRecord(absoluteItemPathName, &currentItemDbRecord) && currentItemDbRecord.isValid()) {
+                qCWarning(lcAccount()) << "skip existing item" << absoluteItemPathName;
+                return;
+            }
 
-        auto newEntry = RemoteInfo{};
-        newEntry.name = itemFileName;
-        newEntry.size = -1;
+            auto newEntry = RemoteInfo{};
+            newEntry.name = itemFileName;
+            newEntry.size = -1;
 
-        LsColJob::propertyMapToRemoteInfo(properties,
-                                          serverHasMountRootProperty() ? RemotePermissions::MountedPermissionAlgorithm::UseMountRootProperty : RemotePermissions::MountedPermissionAlgorithm::WildGuessMountedSubProperty,
-                                          newEntry);
-        if (newEntry.isDirectory) {
-            newEntry.size = 0;
-        }
+            LsColJob::propertyMapToRemoteInfo(properties,
+                                              serverHasMountRootProperty() ? RemotePermissions::MountedPermissionAlgorithm::UseMountRootProperty
+                                                                           : RemotePermissions::MountedPermissionAlgorithm::WildGuessMountedSubProperty,
+                                              newEntry);
+            if (newEntry.isDirectory) {
+                newEntry.size = 0;
+            }
 
-        if (!newEntry.remotePerm.isNull() && !newEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
-            qCWarning(lcAccount()) << "skip non-readable item" << absoluteItemPathName;
-            return;
-        }
+            if (!newEntry.remotePerm.isNull() && !newEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
+                qCWarning(lcAccount()) << "skip non-readable item" << absoluteItemPathName;
+                return;
+            }
 
-        promise->emplaceResult(itemFileName, itemFileName.toStdWString(), absoluteItemPathName, newEntry);
-    });
+            promise->emplaceResult(itemFileName, itemFileName.toStdWString(), absoluteItemPathName, newEntry);
+        });
 
     promise->start();
     listFolderJob->start();

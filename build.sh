@@ -19,6 +19,8 @@ TEAM_ID="${TEAM_ID:-EW76LLFDSH}"
 [[ "${UNSIGNED:-}" == 1 ]] && TEAM_ID=""
 BREW_DEPS=(cmake ninja pkgconf qtbase qtdeclarative qtsvg qt5compat qtwebsockets qttools qtshadertools qtimageformats
   qtkeychain karchive extra-cmake-modules libp11 librsvg openssl@3)
+# Security redirect regression tests require Qt's local HTTP server fixture.
+[[ "${CLIENT_TESTING:-OFF}" == ON ]] && BREW_DEPS+=(qthttpserver)
 KDSA_TAG=v1.2.1
 KDSA_COMMIT=b63420aebb78df20e37310bb090f075990a5a4f6
 

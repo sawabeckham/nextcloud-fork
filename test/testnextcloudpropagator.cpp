@@ -8,13 +8,14 @@
  * any purpose.
  */
 
-#include <QtTest>
 #include <QDebug>
+#include <QtTest>
 
 #include "accessmanager.h"
 #include "creds/webflowcredentials.h"
-#include "propagatedownload.h"
+#include "networkjobs.h"
 #include "owncloudpropagator_p.h"
+#include "propagatedownload.h"
 #include "syncenginetestutils.h"
 
 using namespace Qt::StringLiterals;
@@ -25,7 +26,8 @@ using namespace Qt::StringLiterals;
 #endif
 
 using namespace OCC;
-namespace OCC {
+namespace OCC
+{
 QString OWNCLOUDSYNC_EXPORT createDownloadTmpFileName(const QString &previous);
 }
 
@@ -44,8 +46,8 @@ private Q_SLOTS:
 
     void testUpdateErrorFromSession()
     {
-        //OwncloudPropagator propagator(nullptr, QLatin1String("test1"), QLatin1String("test2"), new ProgressDatabase);
-        QVERIFY( true );
+        // OwncloudPropagator propagator(nullptr, QLatin1String("test1"), QLatin1String("test2"), new ProgressDatabase);
+        QVERIFY(true);
     }
 
     void testTmpDownloadFileNameGeneration()
@@ -53,41 +55,41 @@ private Q_SLOTS:
         QString fn;
         // without dir
         for (int i = 1; i <= 1000; i++) {
-            fn+="F";
+            fn += "F";
             QString tmpFileName = createDownloadTmpFileName(fn);
             if (tmpFileName.contains('/')) {
-                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/')+1);
+                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/') + 1);
             }
-            QVERIFY( tmpFileName.length() > 0);
-            QVERIFY( tmpFileName.length() <= 254);
+            QVERIFY(tmpFileName.length() > 0);
+            QVERIFY(tmpFileName.length() <= 254);
         }
         // with absolute dir
         fn = "/Users/guruz/ownCloud/rocks/GPL";
         for (int i = 1; i < 1000; i++) {
-            fn+="F";
+            fn += "F";
             QString tmpFileName = createDownloadTmpFileName(fn);
             if (tmpFileName.contains('/')) {
-                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/')+1);
+                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/') + 1);
             }
-            QVERIFY( tmpFileName.length() > 0);
-            QVERIFY( tmpFileName.length() <= 254);
+            QVERIFY(tmpFileName.length() > 0);
+            QVERIFY(tmpFileName.length() <= 254);
         }
         // with relative dir
         fn = "rocks/GPL";
         for (int i = 1; i < 1000; i++) {
-            fn+="F";
+            fn += "F";
             QString tmpFileName = createDownloadTmpFileName(fn);
             if (tmpFileName.contains('/')) {
-                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/')+1);
+                tmpFileName = tmpFileName.mid(tmpFileName.lastIndexOf('/') + 1);
             }
-            QVERIFY( tmpFileName.length() > 0);
-            QVERIFY( tmpFileName.length() <= 254);
+            QVERIFY(tmpFileName.length() > 0);
+            QVERIFY(tmpFileName.length() <= 254);
         }
     }
 
     void testParseEtag()
     {
-        using Test = QPair<const char*, const char*>;
+        using Test = QPair<const char *, const char *>;
         QList<Test> tests;
         tests.append(Test("\"abcd\"", "abcd"));
         tests.append(Test("\"\"", ""));
@@ -109,10 +111,7 @@ private Q_SLOTS:
             "<s:exception>Sabre\\Exception\\UnsupportedMediaType</s:exception>\n"
             "<s:message>Virus detected!</s:message>\n"
             "</d:error>");
-        const auto reply = new FakeErrorReply(QNetworkAccessManager::PutOperation,
-                                              request,
-                                              this,
-                                              415, body);
+        const auto reply = new FakeErrorReply(QNetworkAccessManager::PutOperation, request, this, 415, body);
         const auto exceptionParsed = OCC::getExceptionFromReply(reply);
         // verify parsing succeeded
         QVERIFY(!exceptionParsed.first.isEmpty());
@@ -232,10 +231,19 @@ private Q_SLOTS:
             responder.write("OK redirectTarget"_ba, headers);
         });
 
+        bool uploadReceivedAtDirectDownloadServer = false;
+        directDownloadServer.route("/data/crossOriginUploadTarget",
+                                   [&uploadReceivedAtDirectDownloadServer](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
+                                       Q_UNUSED(request);
+                                       uploadReceivedAtDirectDownloadServer = true;
+                                       responder.write("ERROR"_ba, "text/plain"_ba, QHttpServerResponder::StatusCode::Forbidden);
+                                   });
+
         QTcpServer directDownloadTcpServer;
         QVERIFY(directDownloadTcpServer.listen(QHostAddress::LocalHost));
         QVERIFY(directDownloadServer.bind(&directDownloadTcpServer));
-        const QString directDownloadBaseUrl = "http://%1:%2"_L1.arg(directDownloadTcpServer.serverAddress().toString(), QString::number(directDownloadTcpServer.serverPort()));
+        const QString directDownloadBaseUrl =
+            "http://%1:%2"_L1.arg(directDownloadTcpServer.serverAddress().toString(), QString::number(directDownloadTcpServer.serverPort()));
         qInfo() << "Listening on" << directDownloadBaseUrl;
 
         QHttpServer nextcloudServer;
@@ -248,14 +256,23 @@ private Q_SLOTS:
             headers.append("ETag"_ba, "0123456789abcdef"_ba);
             responder.write("OK someFile"_ba, headers);
         });
-        nextcloudServer.route("/remote.php/dav/files/propagatortest/redirectedFile", [&directDownloadBaseUrl](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
-            QVERIFY(request.headers().contains(QHttpHeaders::WellKnownHeader::Authorization));
+        nextcloudServer.route("/remote.php/dav/files/propagatortest/redirectedFile",
+                              [&directDownloadBaseUrl](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
+                                  QVERIFY(request.headers().contains(QHttpHeaders::WellKnownHeader::Authorization));
 
-            QHttpHeaders headers;
-            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/plain"_ba);
-            headers.append(QHttpHeaders::WellKnownHeader::Location, directDownloadBaseUrl + "/someOtherPath/redirectTarget"_L1);
-            responder.write(""_ba, headers, QHttpServerResponder::StatusCode::Found);
-        });
+                                  QHttpHeaders headers;
+                                  headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/plain"_ba);
+                                  headers.append(QHttpHeaders::WellKnownHeader::Location, directDownloadBaseUrl + "/someOtherPath/redirectTarget"_L1);
+                                  responder.write(""_ba, headers, QHttpServerResponder::StatusCode::Found);
+                              });
+        nextcloudServer.route("/remote.php/dav/files/propagatortest/redirectedUpload",
+                              [&directDownloadBaseUrl](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
+                                  Q_UNUSED(request);
+                                  QHttpHeaders headers;
+                                  headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/plain"_ba);
+                                  headers.append(QHttpHeaders::WellKnownHeader::Location, directDownloadBaseUrl + "/data/crossOriginUploadTarget"_L1);
+                                  responder.write(""_ba, headers, QHttpServerResponder::StatusCode::Found);
+                              });
 
         QTcpServer nextcloudTcpServer;
         QVERIFY(nextcloudTcpServer.listen(QHostAddress::LocalHost));
@@ -263,13 +280,11 @@ private Q_SLOTS:
         const QString nextcloudBaseUrl = "http://%1:%2"_L1.arg(nextcloudTcpServer.serverAddress().toString(), QString::number(nextcloudTcpServer.serverPort()));
         qInfo() << "Listening on" << nextcloudBaseUrl;
 
-
         auto account = OCC::Account::create();
         // using WebFlowCredentials here to to make sure it works as expected for real
         account->setCredentials(new WebFlowCredentials(u"propagatortest"_s, u"invalid"_s));
         account->setDavUser(u"propagatortest"_s);
         account->setUrl(nextcloudBaseUrl);
-
 
         {
             qInfo() << "Test: direct URL";
@@ -329,6 +344,24 @@ private Q_SLOTS:
 
             // The temporary web servers verify the received headers
             QCOMPARE(receivedContent.data(), "OK redirectTarget"_ba);
+        }
+
+        {
+            qInfo() << "Test: request with body to standard dav path with redirect to different origin";
+            QByteArray payload = "CONFIDENTIAL_PAYLOAD"_ba;
+            auto uploadBuffer = new QBuffer();
+            uploadBuffer->setData(payload);
+            uploadBuffer->open(QIODevice::ReadOnly);
+
+            auto job = new SimpleNetworkJob(account);
+            uploadBuffer->setParent(job);
+            QSignalSpy spy(job, &SimpleNetworkJob::finishedSignal);
+
+            job->startRequest("POST"_ba, QUrl{nextcloudBaseUrl + "/remote.php/dav/files/propagatortest/redirectedUpload"_L1}, {}, uploadBuffer);
+            spy.wait(1000);
+
+            // Cross-origin redirect with request body must be refused and never reach the external server
+            QVERIFY(!uploadReceivedAtDirectDownloadServer);
         }
     }
 #endif

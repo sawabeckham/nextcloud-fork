@@ -31,55 +31,48 @@ NS_ASSUME_NONNULL_BEGIN
  * @param domainIdentifier The file provider domain identifier for the account that owns the item.
  */
 - (void)presentUnifiedSharingForItem:(NSString *)fileId
-                          localPath:(NSString *)localPath
-                     remoteItemPath:(NSString *)remoteItemPath
-                forDomainIdentifier:(NSString *)domainIdentifier
-    NS_SWIFT_NAME(presentUnifiedSharing(forItem:localPath:remoteItemPath:forDomainIdentifier:));
+                           localPath:(NSString *)localPath
+                      remoteItemPath:(NSString *)remoteItemPath
+                 forDomainIdentifier:(NSString *)domainIdentifier NS_SWIFT_NAME(presentUnifiedSharing(forItem:localPath:remoteItemPath:forDomainIdentifier:));
 
 /**
  * @brief The file provider extension asks the main app to open the item's page in the user's web browser.
  *
- * The main app resolves the per-item private link via PROPFIND (with the
- * server's deprecated link as a fallback) and hands it to the platform browser.
+ * The main app builds the internal link from the numeric file ID and account
+ * capabilities and hands it to the platform browser.
  * This mirrors the classic-sync "Open in browser" entry exposed via
  * `SocketApi::command_OPEN_PRIVATE_LINK`. See nextcloud/desktop#10025.
  *
  * @param fileId The **numeric** server file id, equal to the WebDAV `fileid` property.
  *               This is NOT the ocId — naming differs from `presentFileActions:...`
- *               on purpose because `fetchPrivateLinkUrl` requires the numeric id
- *               for the deprecated fallback URL.
- * @param remoteItemPath The server-side path of the item, used to issue the
- *                       PROPFIND that resolves the per-item private link.
+ *               because internal links use the numeric ID.
+ * @param remoteItemPath The server-side path of the item, retained for XPC compatibility.
  * @param domainIdentifier The file provider domain identifier for the account that owns the item.
  */
 - (void)openItemInBrowser:(NSString *)fileId
            remoteItemPath:(NSString *)remoteItemPath
-      forDomainIdentifier:(NSString *)domainIdentifier
-    NS_SWIFT_NAME(openItemInBrowser(_:remoteItemPath:forDomainIdentifier:));
+      forDomainIdentifier:(NSString *)domainIdentifier NS_SWIFT_NAME(openItemInBrowser(_:remoteItemPath:forDomainIdentifier:));
 
 /**
- * @brief The file provider extension asks the main app to fetch the internal link for the given item and write it to the user's pasteboard.
+ * @brief The file provider extension asks the main app to build the internal link for the given item and write it to the user's pasteboard.
  *
  * The extension itself cannot write to NSPasteboard because of its sandbox profile
- * (see FileProviderExt.entitlements). The main app resolves the per-item private
- * link via PROPFIND (with the deprecated link built from the numeric file id as
- * fallback) and writes it to `QGuiApplication::clipboard()`. On success it also
+ * (see FileProviderExt.entitlements). The main app builds the internal link from
+ * the numeric file ID and account capabilities and writes it to
+ * `QGuiApplication::clipboard()`. On success it also
  * surfaces a system notification through the existing systray. Mirrors the
  * classic-sync "Copy internal link" entry exposed via
  * `SocketApi::command_COPY_PRIVATE_LINK`. See nextcloud/desktop#10024.
  *
  * @param fileId The **numeric** server file id, equal to the WebDAV `fileid` property.
  *               This is NOT the ocId — naming differs from `presentFileActions:...`
- *               on purpose because `fetchPrivateLinkUrl` requires the numeric id
- *               for the deprecated fallback URL.
- * @param remoteItemPath The server-side path of the item, used to issue the
- *                       PROPFIND that resolves the per-item private link.
+ *               because internal links use the numeric ID.
+ * @param remoteItemPath The server-side path of the item, retained for XPC compatibility.
  * @param domainIdentifier The file provider domain identifier for the account that owns the item.
  */
 - (void)copyInternalLinkForItem:(NSString *)fileId
                  remoteItemPath:(NSString *)remoteItemPath
-            forDomainIdentifier:(NSString *)domainIdentifier
-    NS_SWIFT_NAME(copyInternalLink(forItem:remoteItemPath:forDomainIdentifier:));
+            forDomainIdentifier:(NSString *)domainIdentifier NS_SWIFT_NAME(copyInternalLink(forItem:remoteItemPath:forDomainIdentifier:));
 
 /**
  * @brief The file provider extension can report its synchronization status as a string constant value to the main app through this method.
@@ -106,24 +99,27 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * @brief The file provider extension reports a single item that the server refused with HTTP 507 (or that the pre-flight quota check refused).
  *
- * The main app surfaces an entry per item in its activity view, identical in shape to the per-item error entries the classic sync engine produces (e.g. "“X” was not synchronized — Insufficient storage on the server."). See nextcloud/desktop#9598.
+ * The main app surfaces an entry per item in its activity view, identical in shape to the per-item error entries the classic sync engine produces (e.g. "“X”
+ * was not synchronized — Insufficient storage on the server."). See nextcloud/desktop#9598.
  *
  * @param relativePath The item's path relative to the file provider domain root.
  * @param fileName The display name of the item.
  * @param fileBytes Size of the local file the user tried to upload, in bytes. May be `nil` if not known at report time.
- * @param availableBytes Available quota the server reported via PROPFIND, in bytes. May be `nil` (e.g. when the refusal came from the server's 507 response rather than a pre-flight PROPFIND).
+ * @param availableBytes Available quota the server reported via PROPFIND, in bytes. May be `nil` (e.g. when the refusal came from the server's 507 response
+ * rather than a pre-flight PROPFIND).
  * @param domainIdentifier The file provider domain identifier for the affected account.
  */
 - (void)reportInsufficientQuotaForItem:(NSString *)relativePath
                               fileName:(NSString *)fileName
-                             fileBytes:(NSNumber * _Nullable)fileBytes
-                        availableBytes:(NSNumber * _Nullable)availableBytes
+                             fileBytes:(NSNumber *_Nullable)fileBytes
+                        availableBytes:(NSNumber *_Nullable)availableBytes
                    forDomainIdentifier:(NSString *)domainIdentifier;
 
 /**
  * @brief The file provider extension reports that one or more uploads were refused by the server's quota for the given domain.
  *
- * The main app surfaces a single per-folder summary entry in its activity view with a "Retry all uploads" button — analogous to the entry the classic sync engine produces via `SyncEngine::slotInsufficientRemoteStorage`. The main app dedupes this report per domain.
+ * The main app surfaces a single per-folder summary entry in its activity view with a "Retry all uploads" button — analogous to the entry the classic sync
+ * engine produces via `SyncEngine::slotInsufficientRemoteStorage`. The main app dedupes this report per domain.
  *
  * @param domainIdentifier The file provider domain identifier for the affected account.
  */

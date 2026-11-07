@@ -8,15 +8,16 @@
 #include "configfile.h"
 #include "settings/servermanagedsettings.h"
 
-#include <QVariantMap>
+#include <QDebug>
 #include <QLoggingCategory>
 #include <QUrl>
+#include <QVariantMap>
 #include <QVersionNumber>
-#include <QDebug>
 
 using namespace Qt::StringLiterals;
 
-namespace OCC {
+namespace OCC
+{
 
 Q_LOGGING_CATEGORY(lcServerCapabilities, "nextcloud.sync.server.capabilities", QtInfoMsg)
 
@@ -97,10 +98,10 @@ bool Capabilities::shareResharing() const
 
 int Capabilities::shareDefaultPermissions() const
 {
-    if(_capabilities["files_sharing"].toMap().contains("default_permissions")) {
+    if (_capabilities["files_sharing"].toMap().contains("default_permissions")) {
         return _capabilities["files_sharing"].toMap()["default_permissions"].toInt();
     }
-    
+
     return {};
 }
 
@@ -199,9 +200,10 @@ QList<QByteArray> Capabilities::supportedChecksumTypes() const
 
 QByteArray Capabilities::preferredUploadChecksumType() const
 {
-    return qEnvironmentVariable("OWNCLOUD_CONTENT_CHECKSUM_TYPE",
-                                _capabilities.value(QStringLiteral("checksums")).toMap()
-                                .value(QStringLiteral("preferredUploadType"), QStringLiteral("SHA1")).toString()).toUtf8();
+    return qEnvironmentVariable(
+               "OWNCLOUD_CONTENT_CHECKSUM_TYPE",
+               _capabilities.value(QStringLiteral("checksums")).toMap().value(QStringLiteral("preferredUploadType"), QStringLiteral("SHA1")).toString())
+        .toUtf8();
 }
 
 QByteArray Capabilities::uploadChecksumType() const
@@ -290,14 +292,11 @@ bool Capabilities::userStatusSupportsBusy() const
 
 bool Capabilities::ncAssistantEnabled() const
 {
-    if (_capabilities.contains("assistant")
-        && _capabilities["assistant"].toMap()["enabled"].toBool()) {
-
+    if (_capabilities.contains("assistant") && _capabilities["assistant"].toMap()["enabled"].toBool()) {
         const auto minimumVersion = QVersionNumber(1, 0, 9);
         const auto versionString = _capabilities["assistant"].toMap()["version"].toString();
 
-        if (const auto currentVersion = QVersionNumber::fromString(versionString);
-            QVersionNumber::compare(currentVersion, minimumVersion) >= 0) {
+        if (const auto currentVersion = QVersionNumber::fromString(versionString); QVersionNumber::compare(currentVersion, minimumVersion) >= 0) {
             return true;
         }
 
@@ -327,8 +326,6 @@ QMap<QString, QVariant> Capabilities::serverThemingMap() const
 
     return _capabilities["theming"].toMap();
 }
-
-
 
 PushNotificationTypes Capabilities::availablePushNotifications() const
 {
@@ -365,9 +362,10 @@ bool Capabilities::chunkingParallelUploadDisabled() const
     return _capabilities["dav"].toMap()["chunkingParallelUploadDisabled"].toBool();
 }
 
-bool Capabilities::privateLinkPropertyAvailable() const
+QString Capabilities::globalScaleToken() const
 {
-    return _capabilities["files"].toMap()["privateLinks"].toBool();
+    const auto token = _capabilities.value(u"globalscale"_s).toMap().value(u"token"_s);
+    return token.metaType().id() == QMetaType::QString ? token.toString() : QString{};
 }
 
 QList<int> Capabilities::httpErrorCodesThatResetFailingChunkedUploads() const
@@ -483,21 +481,15 @@ QList<QVariantMap> Capabilities::fileActionsByMimeType(const QMimeType &fileMime
         for (const auto &mimeType : filesMimeTypeFilterList) {
             const auto capabilitiesMimeType = mimeType.trimmed();
             QString mimeTypeAlias;
-            if (const auto capabilitiesMimeTypeSplit = capabilitiesMimeType.split("/");
-                !capabilitiesMimeTypeSplit.isEmpty()){
+            if (const auto capabilitiesMimeTypeSplit = capabilitiesMimeType.split("/"); !capabilitiesMimeTypeSplit.isEmpty()) {
                 mimeTypeAlias = capabilitiesMimeTypeSplit.last();
             }
 
             qCDebug(lcServerCapabilities) << "Context menu for mimeType:" << mimeTypeAlias << capabilitiesMimeType;
-            qCDebug(lcServerCapabilities) << fileMimeTypeName << "inherits" << capabilitiesMimeType << "?"
-                                          << fileMimeType.inherits(capabilitiesMimeType);
+            qCDebug(lcServerCapabilities) << fileMimeTypeName << "inherits" << capabilitiesMimeType << "?" << fileMimeType.inherits(capabilitiesMimeType);
 
-            if (!capabilitiesMimeType.isEmpty()
-                && !fileMimeTypeName.startsWith(capabilitiesMimeType)
-                && !fileMimeTypeName.contains(capabilitiesMimeType)
-                && !fileMimeType.inherits(capabilitiesMimeType) &&
-                !fileMimeTypeName.startsWith(mimeTypeAlias)
-                && !fileMimeTypeName.contains(mimeTypeAlias)
+            if (!capabilitiesMimeType.isEmpty() && !fileMimeTypeName.startsWith(capabilitiesMimeType) && !fileMimeTypeName.contains(capabilitiesMimeType)
+                && !fileMimeType.inherits(capabilitiesMimeType) && !fileMimeTypeName.startsWith(mimeTypeAlias) && !fileMimeTypeName.contains(mimeTypeAlias)
                 && !fileMimeType.inherits(mimeTypeAlias)) {
                 continue;
             }
@@ -513,14 +505,14 @@ QList<QVariantMap> Capabilities::fileActionsByMimeType(const QMimeType &fileMime
 /*-------------------------------------------------------------------------------------*/
 
 // Direct Editing
-void Capabilities::addDirectEditor(DirectEditor* directEditor)
+void Capabilities::addDirectEditor(DirectEditor *directEditor)
 {
     if (directEditor) {
         _directEditors.append(directEditor);
     }
 }
 
-DirectEditor* Capabilities::getDirectEditorForMimetype(const QMimeType &mimeType)
+DirectEditor *Capabilities::getDirectEditorForMimetype(const QMimeType &mimeType)
 {
     for (const auto editor : std::as_const(_directEditors)) {
         if (editor->hasMimetype(mimeType)) {
@@ -531,7 +523,7 @@ DirectEditor* Capabilities::getDirectEditorForMimetype(const QMimeType &mimeType
     return nullptr;
 }
 
-DirectEditor* Capabilities::getDirectEditorForOptionalMimetype(const QMimeType &mimeType)
+DirectEditor *Capabilities::getDirectEditorForOptionalMimetype(const QMimeType &mimeType)
 {
     for (const auto editor : std::as_const(_directEditors)) {
         if (editor->hasOptionalMimetype(mimeType)) {
@@ -547,10 +539,9 @@ bool Capabilities::governanceAvailable() const
     return _capabilities.contains(u"governance"_s);
 }
 
-
 /*-------------------------------------------------------------------------------------*/
 
-DirectEditor::DirectEditor(const QString &id, const QString &name, QObject* parent)
+DirectEditor::DirectEditor(const QString &id, const QString &name, QObject *parent)
     : QObject(parent)
     , _id(id)
     , _name(name)

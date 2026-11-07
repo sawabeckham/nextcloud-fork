@@ -8,15 +8,17 @@
 #include <QFileInfo>
 #include <QLoggingCategory>
 
-#import <Foundation/Foundation.h>
 #import <FileProvider/FileProvider.h>
+#import <Foundation/Foundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include "fileproviderutils.h"
+#include "fileproviderutils_mac.h"
 
 static_assert(__has_feature(objc_arc), "fileprovideritemmetadata_mac requires ARC.");
 
-namespace {
+namespace
+{
 
 QString nsNameComponentsToLocalisedQString(NSPersonNameComponents *const nameComponents)
 {
@@ -24,7 +26,9 @@ QString nsNameComponentsToLocalisedQString(NSPersonNameComponents *const nameCom
         return {};
     }
 
-    NSString *const name = [NSPersonNameComponentsFormatter localizedStringFromPersonNameComponents:nameComponents style:NSPersonNameComponentsFormatterStyleDefault options:0];
+    NSString *const name = [NSPersonNameComponentsFormatter localizedStringFromPersonNameComponents:nameComponents
+                                                                                              style:NSPersonNameComponentsFormatterStyleDefault
+                                                                                            options:0];
     return QString::fromNSString(name);
 }
 
@@ -40,16 +44,18 @@ QHash<QString, QByteArray> extendedAttributesToHash(NSDictionary<NSString *, NSD
 
 }
 
-namespace OCC {
+namespace OCC
+{
 
-namespace Mac {
+namespace Mac
+{
 
 Q_LOGGING_CATEGORY(lcMacImplFileProviderItemMetadata, "nextcloud.gui.macfileprovideritemmetadatamacimpl", QtInfoMsg)
 
 FileProviderItemMetadata FileProviderItemMetadata::fromNSFileProviderItem(const void *const nsFileProviderItem, const QString &domainIdentifier)
 {
     FileProviderItemMetadata metadata;
-    const id<NSFileProviderItem> bridgedNsFileProviderItem = (__bridge id<NSFileProviderItem>)nsFileProviderItem;
+    const auto bridgedNsFileProviderItem = (__bridge id<NSFileProviderItem>)nsFileProviderItem;
     if (bridgedNsFileProviderItem == nil) {
         return {};
     }
@@ -104,15 +110,15 @@ QString FileProviderItemMetadata::getUserVisiblePath() const
 {
     qCDebug(lcMacImplFileProviderItemMetadata) << "Getting user visible path";
 
-    const auto id = identifier();
+    const auto itemIdentifier = identifier();
     const auto domainId = domainIdentifier();
 
-    if (id.isEmpty() || domainId.isEmpty()) {
+    if (itemIdentifier.isEmpty() || domainId.isEmpty()) {
         qCWarning(lcMacImplFileProviderItemMetadata) << "Could not fetch user visible path for item, no identifier or domainIdentifier";
         return QStringLiteral("Unknown");
     }
 
-    __block QString returnPath = QObject::tr("Unknown");
+    const auto returnPath = QObject::tr("Unknown");
     NSFileProviderManager *const manager = FileProviderUtils::managerForDomainIdentifier(domainId);
 
     if (manager == nil) {
@@ -120,26 +126,9 @@ QString FileProviderItemMetadata::getUserVisiblePath() const
         return returnPath;
     }
 
-    NSString *const nsItemIdentifier = id.toNSString();
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-
-    // getUserVisibleUrl is async, so wait here
-
-    [manager getUserVisibleURLForItemIdentifier:nsItemIdentifier
-                              completionHandler:^(NSURL *const userVisibleFile, NSError *const error) {
-
-        if (error != nil) {
-            qCWarning(lcMacImplFileProviderItemMetadata) << "Error fetching user visible url for item identifier." << error.localizedDescription;
-        } else {
-            returnPath = QString::fromNSString(userVisibleFile.path);
-        }
-
-        dispatch_semaphore_signal(semaphore);
-    }];
-
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-
-    return returnPath;
+    NSString *const nsItemIdentifier = itemIdentifier.toNSString();
+    const auto resultURL = FileProviderUtils::userVisibleURLForItem(manager, nsItemIdentifier);
+    return resultURL != nil ? QString::fromNSString(resultURL.path) : returnPath;
 }
 
 }

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased — целевая0.6.8
 
+- Перенесён upstream master cc930c7c (35.1.0 alpha): GRDB migration, File Provider cancellation/scanning/permissions/locking и network redirect protection. Основные isolated tests/consuming builds прошли; live migration/новый release PKG не выполнялись.
+
 - После установки postinstall запускает установленный Nextcloud Fork в сеансе console user. При отсутствии сеанса запуск откладывается; при ошибке запуска выводится способ открыть приложение вручную. Новый релизный PKG ещё не собран.
 
 ## [0.6.7] — 2026-11-03, PKG подготовлен

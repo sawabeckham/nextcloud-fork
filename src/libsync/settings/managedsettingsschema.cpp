@@ -17,7 +17,8 @@
 
 using namespace Qt::StringLiterals;
 
-namespace OCC::ManagedSettingsSchema {
+namespace OCC::ManagedSettingsSchema
+{
 
 namespace
 {
@@ -72,6 +73,7 @@ const QList<SettingDefinition> &all()
         {QStringLiteral("confirmExternalStorage"), true, true},
         {QStringLiteral("useNewBigFolderSizeLimit"), true, true},
         {QStringLiteral("notifyExistingFoldersOverLimit"), false, true},
+        {QStringLiteral("wizardSelectiveSyncDefaultNothing"), false, true},
         {QStringLiteral("virtualFilesMode"), QStringLiteral("off"), true},
         {QStringLiteral("newBigFolderSizeLimit"), 0, true},
         {QStringLiteral("stopSyncingExistingFoldersOverLimit"), false, true},

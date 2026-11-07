@@ -6,24 +6,24 @@
 
 #include "theme.h"
 #include "common/utility.h"
-#include "version.h"
-#include "configfile.h"
 #include "common/vfs.h"
+#include "configfile.h"
+#include "version.h"
 
 #include <QtCore>
 #ifndef TOKEN_AUTH_ONLY
-#include <QtGui>
-#include <QStyle>
 #include <QApplication>
+#include <QStyle>
+#include <QtGui>
 #endif
 #include <QGuiApplication>
-#include <QStyleHints>
-#include <QSslSocket>
-#include <QSvgRenderer>
-#include <QPainter>
-#include <QJsonDocument>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QLoggingCategory>
+#include <QPainter>
+#include <QSslSocket>
+#include <QStyleHints>
+#include <QSvgRenderer>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -43,7 +43,8 @@
 #undef Mirall
 #endif
 
-namespace {
+namespace
+{
 
 QUrl imagePathToUrl(const QString &imagePath)
 {
@@ -80,14 +81,16 @@ QColor destructiveActionColor(const bool darkMode, const QRgb darkColor, const Q
 }
 
 #ifdef Q_OS_WIN
-bool isWindows11OrGreater() {
+bool isWindows11OrGreater()
+{
     return QOperatingSystemVersion::current().version() >= QOperatingSystemVersion::Windows11.version();
 }
 #endif
 
 }
 
-namespace OCC {
+namespace OCC
+{
 
 Q_LOGGING_CATEGORY(lcTheme, "nextcloud.gui.theme", QtInfoMsg)
 
@@ -308,7 +311,7 @@ QIcon Theme::themeIcon(const QString &name, bool sysTray) const
 
         const QString svgName = QString(Theme::themePrefix) + QString::fromLatin1("%1/%2.svg").arg(flavor).arg(name);
         QSvgRenderer renderer(svgName);
-        const auto createPixmapFromSvg = [&renderer] (int size) {
+        const auto createPixmapFromSvg = [&renderer](int size) {
             QImage img(size, size, QImage::Format_ARGB32);
             img.fill(Qt::GlobalColor::transparent);
             QPainter imgPainter(&img);
@@ -316,14 +319,13 @@ QIcon Theme::themeIcon(const QString &name, bool sysTray) const
             return QPixmap::fromImage(img);
         };
 
-        const auto loadPixmap = [flavor, name] (int size) {
+        const auto loadPixmap = [flavor, name](int size) {
             const QString pixmapName = QString(Theme::themePrefix) + QString::fromLatin1("%1/%2-%3.png").arg(flavor).arg(name).arg(size);
             return QPixmap(pixmapName);
         };
 
         const auto useSvg = shouldPreferSvg();
-        const auto sizes = useSvg ? QVector<int>{ 16, 32, 64, 128, 256 }
-                                  : QVector<int>{ 16, 22, 32, 48, 64, 128, 256, 512, 1024 };
+        const auto sizes = useSvg ? QVector<int>{16, 32, 64, 128, 256} : QVector<int>{16, 22, 32, 48, 64, 128, 256, 512, 1024};
         for (int size : sizes) {
             auto px = useSvg ? createPixmapFromSvg(size) : loadPixmap(size);
             if (px.isNull()) {
@@ -355,9 +357,8 @@ QString Theme::themeImagePath(const QString &name, int size, bool sysTray) const
     const auto useSvg = shouldPreferSvg();
 
     // branded client may have several sizes of the same icon
-    const QString filePath = (useSvg || size <= 0)
-            ? QString(Theme::themePrefix) + QString::fromLatin1("%1/%2").arg(flavor).arg(name)
-            : QString(Theme::themePrefix) + QString::fromLatin1("%1/%2-%3").arg(flavor).arg(name).arg(size);
+    const QString filePath = (useSvg || size <= 0) ? QString(Theme::themePrefix) + QString::fromLatin1("%1/%2").arg(flavor).arg(name)
+                                                   : QString(Theme::themePrefix) + QString::fromLatin1("%1/%2-%3").arg(flavor).arg(name).arg(size);
 
     const QString svgPath = filePath + ".svg";
     if (useSvg) {
@@ -393,7 +394,6 @@ QString Theme::hidpiFileName(const QString &fileName, QPaintDevice *dev)
     }
     // try to find a 2x version
 
-
     const int dotIndex = fileName.lastIndexOf(QLatin1Char('.'));
     if (dotIndex != -1) {
         QString at2xfileName = fileName;
@@ -413,7 +413,6 @@ QString Theme::hidpiFileName(const QString &iconName, const QColor &backgroundCo
 
     return Theme::hidpiFileName(iconPath, dev);
 }
-
 
 #endif
 
@@ -447,13 +446,10 @@ Theme::Theme()
     reserveDarkPalette.setColor(QPalette::Accent, QColor(127, 127, 200));
 
     reserveDarkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(127, 127, 127));
-    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::ButtonText,
-                                QColor(127, 127, 127));
+    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
     reserveDarkPalette.setColor(QPalette::Disabled, QPalette::Highlight, QColor(80, 80, 80));
-    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::HighlightedText,
-                                QColor(127, 127, 127));
-    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::WindowText,
-                                QColor(127, 127, 127));
+    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(127, 127, 127));
+    reserveDarkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(127, 127, 127));
 #endif
 
     connectToPaletteSignal();
@@ -469,7 +465,7 @@ Theme::Theme()
 QString Theme::developerStringInfo() const
 {
     const auto devString = QString(tr("%1 Desktop Client Version %2", "%1 is application name. %2 is the human version string."))
-    .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING));
+                               .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING));
     return devString;
 }
 
@@ -564,13 +560,10 @@ bool Theme::forbidBadSSL() const
 #endif
 }
 
-
-
 QString Theme::forceConfigAuthType() const
 {
     return QString();
 }
-
 
 QString Theme::defaultClientFolder() const
 {
@@ -661,14 +654,13 @@ QString Theme::gitSHA1() const
 {
     QString devString;
 #ifdef GIT_SHA1
-    const QString githubPrefix(QLatin1String(
-        "https://github.com/nextcloud/desktop/commit/"));
+    const QString githubPrefix(QLatin1String("https://github.com/nextcloud/desktop/commit/"));
     const QString gitSha1(QLatin1String(GIT_SHA1));
     //: %1 is the full Git commit URL. %2 is the abbreviated Git revision. %3 is the build date.
     //: %4 is the build time. %5 is the Qt version. %6 is the TLS library version.
     devString = QCoreApplication::translate("nextcloudTheme::aboutInfo()",
-        "<p><small>Built from Git revision <a href=\"%1\">%2</a>"
-        " on %3, %4 using Qt %5, %6</small></p>")
+                                            "<p><small>Built from Git revision <a href=\"%1\">%2</a>"
+                                            " on %3, %4 using Qt %5, %6</small></p>")
                     .arg(githubPrefix + gitSha1)
                     .arg(gitSha1.left(6))
                     .arg(__DATE__)
@@ -683,7 +675,6 @@ QString Theme::aboutInfo() const
 {
     //: Example text: "<p>Nextcloud Desktop Client</p>"   (%1 is the application name)
     auto devString = developerStringInfo();
-                      
 
     devString += tr("<p><small>Using virtual files plugin: %1</small></p>").arg(Vfs::modeToString(bestAvailableVfsMode()));
     devString += QStringLiteral("<br>%1").arg(QSysInfo::productType() % QLatin1Char('-') % QSysInfo::kernelVersion());
@@ -703,8 +694,7 @@ QString Theme::aboutDetails() const
     QString devString;
     devString = developerStringInfo();
 
-    devString += tr("<p>This release was supplied by %1.</p>")
-              .arg(APPLICATION_VENDOR);
+    devString += tr("<p>This release was supplied by %1.</p>").arg(APPLICATION_VENDOR);
 
     devString += gitSHA1();
 
@@ -898,7 +888,7 @@ QPixmap Theme::wizardHeaderBanner() const
 
 bool Theme::wizardSelectiveSyncDefaultNothing() const
 {
-    return false;
+    return ConfigFile().wizardSelectiveSyncDefaultNothing();
 }
 
 bool Theme::linkSharing() const
@@ -945,9 +935,7 @@ QString Theme::versionSwitchOutput() const
 {
     QString helpText;
     QTextStream stream(&helpText);
-    stream << appName()
-           << QLatin1String(" version ")
-           << version() << Qt::endl;
+    stream << appName() << QLatin1String(" version ") << version() << Qt::endl;
 #ifdef GIT_SHA1
     stream << "Git revision " << GIT_SHA1 << Qt::endl;
 #endif
@@ -1033,12 +1021,8 @@ QIcon Theme::createColorAwareIcon(const QString &name, const QPalette &palette)
 
     inverted.invertPixels(QImage::InvertRgb);
 
-    const auto defaultPixmap = Theme::isDarkColor(palette.color(QPalette::Base))
-        ? QPixmap::fromImage(inverted)
-        : QPixmap::fromImage(img);
-    const auto highlightedPixmap = Theme::isDarkColor(palette.color(QPalette::HighlightedText))
-        ? QPixmap::fromImage(img)
-        : QPixmap::fromImage(inverted);
+    const auto defaultPixmap = Theme::isDarkColor(palette.color(QPalette::Base)) ? QPixmap::fromImage(inverted) : QPixmap::fromImage(img);
+    const auto highlightedPixmap = Theme::isDarkColor(palette.color(QPalette::HighlightedText)) ? QPixmap::fromImage(img) : QPixmap::fromImage(inverted);
 
     QIcon icon;
     icon.addPixmap(defaultPixmap, QIcon::Normal, QIcon::Off);
@@ -1108,7 +1092,7 @@ QColor Theme::destructiveActionTextColor() const
 
 void Theme::connectToPaletteSignal() const
 {
-    if (const auto ptr = qobject_cast<QGuiApplication*>(qApp)) {
+    if (const auto ptr = qobject_cast<QGuiApplication *>(qApp)) {
         connect(ptr->styleHints(), &QStyleHints::colorSchemeChanged, this, &Theme::darkModeChanged, Qt::UniqueConnection);
     }
 }
@@ -1125,27 +1109,27 @@ QVariantMap Theme::systemPalette() const
 
 #endif
 
-    return QVariantMap {
-        { QStringLiteral("base"), systemPalette.base().color() },
-        { QStringLiteral("alternateBase"), systemPalette.alternateBase().color() },
-        { QStringLiteral("text"), systemPalette.text().color() },
-        { QStringLiteral("toolTipBase"), systemPalette.toolTipBase().color() },
-        { QStringLiteral("toolTipText"), systemPalette.toolTipText().color() },
-        { QStringLiteral("brightText"), systemPalette.brightText().color() },
-        { QStringLiteral("buttonText"), systemPalette.buttonText().color() },
-        { QStringLiteral("button"), systemPalette.button().color() },
-        { QStringLiteral("highlightedText"), systemPalette.highlightedText().color() },
-        { QStringLiteral("placeholderText"), systemPalette.placeholderText().color() },
-        { QStringLiteral("windowText"), systemPalette.windowText().color() },
-        { QStringLiteral("window"), systemPalette.window().color() },
-        { QStringLiteral("dark"), systemPalette.dark().color() },
-        { QStringLiteral("highlight"), systemPalette.highlight().color() },
-        { QStringLiteral("light"), systemPalette.light().color() },
-        { QStringLiteral("link"), systemPalette.link().color() },
-        { QStringLiteral("midlight"), systemPalette.midlight().color() },
-        { QStringLiteral("mid"), systemPalette.mid().color() },
-        { QStringLiteral("linkVisited"), systemPalette.linkVisited().color() },
-        { QStringLiteral("shadow"), systemPalette.shadow().color() },
+    return QVariantMap{
+        {QStringLiteral("base"), systemPalette.base().color()},
+        {QStringLiteral("alternateBase"), systemPalette.alternateBase().color()},
+        {QStringLiteral("text"), systemPalette.text().color()},
+        {QStringLiteral("toolTipBase"), systemPalette.toolTipBase().color()},
+        {QStringLiteral("toolTipText"), systemPalette.toolTipText().color()},
+        {QStringLiteral("brightText"), systemPalette.brightText().color()},
+        {QStringLiteral("buttonText"), systemPalette.buttonText().color()},
+        {QStringLiteral("button"), systemPalette.button().color()},
+        {QStringLiteral("highlightedText"), systemPalette.highlightedText().color()},
+        {QStringLiteral("placeholderText"), systemPalette.placeholderText().color()},
+        {QStringLiteral("windowText"), systemPalette.windowText().color()},
+        {QStringLiteral("window"), systemPalette.window().color()},
+        {QStringLiteral("dark"), systemPalette.dark().color()},
+        {QStringLiteral("highlight"), systemPalette.highlight().color()},
+        {QStringLiteral("light"), systemPalette.light().color()},
+        {QStringLiteral("link"), systemPalette.link().color()},
+        {QStringLiteral("midlight"), systemPalette.midlight().color()},
+        {QStringLiteral("mid"), systemPalette.mid().color()},
+        {QStringLiteral("linkVisited"), systemPalette.linkVisited().color()},
+        {QStringLiteral("shadow"), systemPalette.shadow().color()},
     };
 }
 
@@ -1153,8 +1137,7 @@ bool Theme::darkMode() const
 {
     connectToPaletteSignal();
     const auto isDarkFromStyle = [] {
-        switch (qGuiApp->styleHints()->colorScheme())
-        {
+        switch (qGuiApp->styleHints()->colorScheme()) {
         case Qt::ColorScheme::Dark:
             return true;
         case Qt::ColorScheme::Light:

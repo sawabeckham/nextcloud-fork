@@ -61,13 +61,19 @@ struct AuxiliaryDomainTests {
             try await observer.enumerateItems()
             #expect(observer.items.isEmpty)
             #expect(observer.page == nil)
+            let auxiliaryEnumerator = try #require(enumerator as? AuxiliaryEnumerator)
+            let initialAnchor: NSFileProviderSyncAnchor? = await withCheckedContinuation { continuation in
+                auxiliaryEnumerator.currentSyncAnchor { continuation.resume(returning: $0) }
+            }
+            let currentAnchor = try #require(initialAnchor)
             let changes = MockChangeObserver(enumerator: enumerator)
-            try await changes.enumerateChanges()
+            // The upstream observer's default anchor belongs to the database-backed Enumerator.
+            // This accountless enumerator supplies its own anchor through the File Provider contract.
+            try await changes.enumerateChanges(from: currentAnchor)
             #expect(changes.changedItems.isEmpty)
             #expect(changes.deletedItemIdentifiers.isEmpty)
             #expect(changes.finishes.count == 1)
             #expect(changes.finishes.first?.moreComing == false)
-            let auxiliaryEnumerator = try #require(enumerator as? AuxiliaryEnumerator)
             await confirmation("Current anchor completes before invalidation") { completed in
                 auxiliaryEnumerator.currentSyncAnchor { anchor in
                     completed()
@@ -81,7 +87,7 @@ struct AuxiliaryDomainTests {
                     #expect(anchor == nil)
                 }
             }
-            await #expect(throws: (any Error).self) { try await MockChangeObserver(enumerator: enumerator).enumerateChanges() }
+            await #expect(throws: (any Error).self) { try await MockChangeObserver(enumerator: enumerator).enumerateChanges(from: currentAnchor) }
             await #expect(throws: (any Error).self) { try await MockEnumerationObserver(enumerator: enumerator).enumerateItems() }
         }
         #expect(throws: (any Error).self) { try subject.enumerator(for: .trashContainer, request: NSFileProviderRequest()) }

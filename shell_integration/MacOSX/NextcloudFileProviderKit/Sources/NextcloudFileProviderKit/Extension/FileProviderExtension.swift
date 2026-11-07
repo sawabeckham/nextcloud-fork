@@ -97,8 +97,8 @@ import OSLog
     private(set) var setupGeneration = 0
 
     // Waiters parked in `awaitAccount(…)` until `ncAccount` is published.
-    private let accountReadyLock = NSLock()
-    private var accountReadyWaiters = [UUID: CheckedContinuation<Void, Never>]()
+    let accountReadyLock = NSLock()
+    private(set) var accountReadyWaiters = [UUID: CheckedContinuation<Void, Never>]()
 
     /// Whether or not we are going to recursively scan new folders when they are discovered.
     /// Apple's recommendation is that we should always scan the file hierarchy fully.
@@ -112,6 +112,15 @@ import OSLog
     /// fast enumeration by default. We prompt the user on the client side to run a proper, full
     /// enumeration if they want for safety.
     lazy var config = FileProviderDomainDefaults(identifier: domain.identifier, log: log)
+
+    /// NextcloudKit's logger is configured once per process. Its configuration is not thread-safe, and a process hosts one extension per domain, so instances created concurrently, as the tests do, must not configure it again. The static initialiser runs once, before the first instance logs through it.
+    private static let nextcloudKitLoggingConfiguration: Void = {
+        #if DEBUG
+            NKLogFileManager.configure(logLevel: .verbose)
+        #else
+            NKLogFileManager.configure(logLevel: .normal)
+        #endif
+    }()
 
     public required convenience init(domain: NSFileProviderDomain) {
         self.init(domain: domain, bundleIdentifier: Bundle.main.bundleIdentifier)
@@ -135,12 +144,7 @@ import OSLog
         ncKit = NextcloudKit.shared
 
         if !isAuxiliaryDomain {
-            #if DEBUG
-                NKLogFileManager.configure(logLevel: .verbose)
-            #else
-                NKLogFileManager.configure(logLevel: .normal)
-            #endif
-
+            _ = Self.nextcloudKitLoggingConfiguration
             logger.info("NextcloudKit logging configured.", [.url: NKLogFileManager.shared.currentLogFileURL()])
         }
         keychain = Keychain(domain: domain, log: log)
@@ -154,6 +158,9 @@ import OSLog
         logger.debug("File provider extension process is being invalidated.")
         blockSyncObservation?.invalidate()
         blockSyncObservation = nil
+        // The running drain nudges through this instance's manager and database, so it stops; what is still pending waits for the next enqueue's drain.
+        AncestorRefreshCoalescer.shared(for: domain.identifier).cancel()
+        dbManager?.checkpointForShutdown()
     }
 
     func insertSyncAction(_ actionId: UUID) {
@@ -189,6 +196,15 @@ import OSLog
         errorActions.remove(actionId)
         actionsLock.unlock()
         updatedSyncStateReporting(oldActions: oldActions)
+    }
+
+    func completeSyncAction(_ actionId: UUID, error: Error?) {
+        if error == nil || (error as? CocoaError)?.code == .userCancelled {
+            removeSyncAction(actionId)
+        } else {
+            insertErrorAction(actionId)
+            signalEnumerator(completionHandler: { _ in })
+        }
     }
 
     // MARK: - NSFileProviderReplicatedExtension protocol methods
@@ -264,40 +280,74 @@ import OSLog
         let progress = Progress()
 
         Task {
-            // Wait for the account rather than failing outright: the system starts this process and
-            // begins requesting content before the main app has handed the account over, and a
-            // rejected fetch is a download the framework may never ask for again.
-            let ncAccount: Account
-
-            do {
-                ncAccount = try await awaitAccount()
-            } catch {
-                logger.error("Not fetching contents for item because account was never set up.", [.item: itemIdentifier])
-                insertErrorAction(actionId)
-                completionHandler(nil, nil, NSFileProviderError(.notAuthenticated))
-                return
+            let (localUrl, updatedItem, error) = await NetworkOperationCancellation(log: log).run(progress: progress) { cancellation in
+                await self.performFetchContents(for: itemIdentifier, progress: progress, cancellation: cancellation, actionId: actionId)
             }
-
-            guard let dbManager else {
-                logger.debug("Not fetching contents for item because database is unavailable.", [.item: itemIdentifier])
-                insertErrorAction(actionId)
-                completionHandler(nil, nil, NSFileProviderError(.cannotSynchronize))
-                return
-            }
-
-            guard let item = await Item.storedItem(identifier: itemIdentifier, account: ncAccount, remoteInterface: ncKit, dbManager: dbManager, rootDisplayName: rootDisplayName, log: log) else {
-                logger.error("Not fetching contents for item because item was not found.", [.item: itemIdentifier])
-                completionHandler(nil, nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
-                insertErrorAction(actionId)
-                return
-            }
-
-            let (localUrl, updatedItem, error) = await item.fetchContents(domain: self.domain, progress: progress, dbManager: dbManager)
-            removeSyncAction(actionId)
             completionHandler(localUrl, updatedItem, error)
         }
 
         return progress
+    }
+
+    private func performFetchContents(
+        for itemIdentifier: NSFileProviderItemIdentifier,
+        progress: Progress,
+        cancellation: NetworkOperationCancellation,
+        actionId: UUID
+    ) async -> (URL?, Item?, Error?) {
+        guard !progress.isCancelled, !Task.isCancelled else {
+            removeSyncAction(actionId)
+            return (nil, nil, CocoaError(.userCancelled))
+        }
+        // Wait for the account rather than failing outright: the system starts this process and
+        // begins requesting content before the main app has handed the account over, and a
+        // rejected fetch is a download the framework may never ask for again.
+        let ncAccount: Account
+        do {
+            ncAccount = try await awaitAccount()
+        } catch {
+            if error is CancellationError || progress.isCancelled {
+                removeSyncAction(actionId)
+                return (nil, nil, CocoaError(.userCancelled))
+            }
+            logger.error("Not fetching contents for item because account was never set up.", [.item: itemIdentifier])
+            insertErrorAction(actionId)
+            return (nil, nil, NSFileProviderError(.notAuthenticated))
+        }
+
+        guard !progress.isCancelled, !Task.isCancelled else {
+            removeSyncAction(actionId)
+            return (nil, nil, CocoaError(.userCancelled))
+        }
+        guard let dbManager else {
+            logger.debug("Not fetching contents for item because database is unavailable.", [.item: itemIdentifier])
+            insertErrorAction(actionId)
+            return (nil, nil, NSFileProviderError(.cannotSynchronize))
+        }
+
+        let item = await Item.storedItem(
+            identifier: itemIdentifier,
+            account: ncAccount,
+            remoteInterface: ncKit,
+            dbManager: dbManager,
+            rootDisplayName: rootDisplayName,
+            taskHandler: { cancellation.register(task: $0) },
+            isCancelled: { cancellation.isCancelled },
+            log: log
+        )
+        guard !progress.isCancelled, !Task.isCancelled else {
+            removeSyncAction(actionId)
+            return (nil, nil, CocoaError(.userCancelled))
+        }
+        guard let item else {
+            logger.error("Not fetching contents for item because item was not found.", [.item: itemIdentifier])
+            insertErrorAction(actionId)
+            return (nil, nil, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemIdentifier))
+        }
+
+        let result = await item.performFetchContents(domain: domain, progress: progress, dbManager: dbManager, cancellation: cancellation)
+        removeSyncAction(actionId)
+        return result
     }
 
     public func createItem(
@@ -363,15 +413,10 @@ import OSLog
                 log: log
             )
 
-            if error == nil {
+            if let fileProviderError = error as? NSFileProviderError, fileProviderError.code == .excludedFromSync {
                 removeSyncAction(actionId)
             } else {
-                if let fileProviderError = error as? NSFileProviderError, fileProviderError.code == .excludedFromSync {
-                    removeSyncAction(actionId)
-                } else {
-                    insertErrorAction(actionId)
-                    signalEnumerator(completionHandler: { _ in })
-                }
+                completeSyncAction(actionId, error: error)
             }
 
             logger.debug("Calling item creation completion handler.", [.item: item?.itemIdentifier, .name: item?.filename, .error: error])
@@ -473,12 +518,7 @@ import OSLog
                 appProxy: app
             )
 
-            if error != nil {
-                insertErrorAction(actionId)
-                signalEnumerator(completionHandler: { _ in })
-            } else {
-                removeSyncAction(actionId)
-            }
+            completeSyncAction(actionId, error: error)
 
             logger.debug("Calling item modification completion handler.", [.item: item.itemIdentifier, .name: item.filename, .error: error])
             completionHandler(modifiedItem ?? item, [], false, error)
@@ -629,7 +669,7 @@ import OSLog
             // the database before this enumeration runs (#10085).
             let changed = materialized.union(evicted)
             if let self, !changed.isEmpty {
-                refreshRemoveDownloadVisibility(forAncestorsOfFileOcIds: Set(changed.map(\.rawValue)), manager: manager, dbManager: dbManager, logger: logger)
+                refreshRemoveDownloadVisibility(forAncestorsOfFileOcIds: Set(changed.map(\.rawValue)), domain: domain.identifier, manager: manager, dbManager: dbManager, logger: logger)
             }
             completionHandler()
         }
@@ -769,7 +809,7 @@ import OSLog
     /// setup is already in flight (tracked via ``pendingAccount``) or already completed (tracked
     /// via ``ncAccount``) are dropped silently. This prevents concurrent XPC callers from each
     /// opening their own NextcloudKit session and spinning up their own `FilesDatabaseManager`
-    /// (and hence their own Realm) for the same credentials.
+    /// (and hence their own database) for the same credentials.
     ///
     /// - Parameters:
     ///     - completionHandler: An optional completion handler which will be provided an error, if any occurred. Omitting this completion handler is fine, but you won't get notified of errors.
@@ -933,17 +973,7 @@ import OSLog
             return
         }
 
-        NextcloudKit.clearAccountErrorState(for: account.ncKitAccount)
-
-        ncKit.appendSession(
-            account: account.ncKitAccount,
-            urlBase: account.serverUrl,
-            user: account.username,
-            userId: account.id,
-            password: account.password,
-            userAgent: userAgent,
-            groupIdentifier: ""
-        )
+        ncKit.appendSession(account: account, userAgent: userAgent)
 
         var authAttemptState = AuthenticationAttemptResultState.connectionError // default
 
@@ -976,6 +1006,22 @@ import OSLog
                 logger.info("Successfully authenticated.")
         }
 
+        // Opening the database may import or migrate it, so it happens off the main actor.
+        let databaseManager: FilesDatabaseManager
+
+        do {
+            databaseManager = try FilesDatabaseManager(
+                account: account,
+                fileProviderDomainIdentifier: domain.identifier,
+                log: log
+            )
+        } catch {
+            // Without its database the domain stays unavailable; every request keeps failing until a later setup succeeds.
+            logger.fault("Could not open the metadata database. The domain is not set up.", [.error: error])
+            completionHandler?(NSError(.databaseUnavailable))
+            return
+        }
+
         await MainActor.run {
             guard publishAccount(account, generation: generation) else {
                 logger.info("Not publishing the authenticated account because it was removed meanwhile.")
@@ -983,11 +1029,6 @@ import OSLog
                 return
             }
 
-            let databaseManager = FilesDatabaseManager(
-                account: account,
-                fileProviderDomainIdentifier: domain.identifier,
-                log: log
-            )
             // TODO: Initial file creation does not persist item metadata until the upload succeeds.
             // If the extension restarts while that upload is still in progress, startup cleanup
             // cannot distinguish its chunks from an abandoned upload and may remove them.
@@ -1009,32 +1050,48 @@ import OSLog
     /// The domain account, waiting up to `timeoutNanoseconds` for setup to publish it.
     ///
     /// - Throws: `NSFileProviderError(.notAuthenticated)` when no account arrives within
-    ///   `timeoutNanoseconds`.
+    ///   `timeoutNanoseconds`, or `CancellationError` when the waiting task is cancelled.
     ///
-    func awaitAccount(timeoutNanoseconds: UInt64 = 10_000_000_000) async throws -> Account {
+    func awaitAccount(
+        timeoutNanoseconds: UInt64 = 10_000_000_000,
+        onWaiting: @Sendable () -> Void = {}
+    ) async throws -> Account {
+        try Task.checkCancellation()
         guard !isAuxiliaryDomain else { throw NSFileProviderError(.notAuthenticated) }
         if let ncAccount {
             return ncAccount
         }
 
         let token = UUID()
+        var timeoutTask: Task<Void, Never>?
+        defer { timeoutTask?.cancel() }
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            accountReadyLock.lock()
-            accountReadyWaiters[token] = continuation
-            accountReadyLock.unlock()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                accountReadyLock.lock()
+                accountReadyWaiters[token] = continuation
+                accountReadyLock.unlock()
 
-            // The account may have been published between the check above and the enqueue.
-            if ncAccount != nil {
-                resumeAccountWaiter(token)
-                return
+                // The account may have been published between the check above and the enqueue.
+                if ncAccount != nil || Task.isCancelled {
+                    resumeAccountWaiter(token)
+                    return
+                }
+
+                timeoutTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    } catch {
+                        return
+                    }
+                    self?.resumeAccountWaiter(token)
+                }
+                onWaiting()
             }
-
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                self?.resumeAccountWaiter(token)
-            }
+        } onCancel: {
+            self.resumeAccountWaiter(token)
         }
+        try Task.checkCancellation()
 
         // Read after the resume, not at the resume site: a timeout that races an account landing a
         // moment later should still hand back the account rather than fail the request.

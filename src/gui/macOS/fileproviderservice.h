@@ -12,13 +12,15 @@
 #include "libsync/account.h"
 #include "libsync/syncresult.h"
 
-namespace OCC {
+namespace OCC
+{
 
-namespace Mac {
+namespace Mac
+{
 
 /**
  * @brief Service that implements the AppProtocol for XPC communication from file provider extensions.
- * 
+ *
  * This class provides the implementation of the AppProtocol, allowing file provider extensions
  * to communicate with the main application through XPC. The actual XPC connection management
  * is handled by FileProviderXPCUtils::processClientCommunicationConnections.
@@ -80,12 +82,12 @@ Q_SIGNALS:
     /**
      * @brief Emitted when a file provider extension requests to open an item's page in the user's web browser.
      *
-     * The connected slot resolves the per-item private link via `fetchPrivateLinkUrl`
+     * The connected slot builds the internal link via `Account::internalLinkUrl()`
      * and opens the resulting URL via `Utility::openBrowser`, matching the classic-sync
      * "Open in browser" entry. See nextcloud/desktop#10025.
      *
      * @param fileId The **numeric** server file id (WebDAV `fileid`). Not the ocId.
-     * @param remoteItemPath The server-side path of the item, used for the PROPFIND that resolves the private link.
+     * @param remoteItemPath The server-side path of the item.
      * @param fileProviderDomainIdentifier The file provider domain identifier for the account that owns the item.
      */
     void openItemInBrowserRequested(const QString &fileId, const QString &remoteItemPath, const QString &fileProviderDomainIdentifier);
@@ -93,14 +95,14 @@ Q_SIGNALS:
     /**
      * @brief Emitted when a file provider extension asks the main app to copy the internal link for an item to the user's clipboard.
      *
-     * The connected slot resolves the per-item private link via `fetchPrivateLinkUrl`,
+     * The connected slot builds the internal link via `Account::internalLinkUrl()`,
      * writes the resulting URL to `QGuiApplication::clipboard()`, and surfaces a
      * system notification through the existing systray. Mirrors the classic-sync
      * "Copy internal link" entry exposed by `SocketApi::command_COPY_PRIVATE_LINK`.
      * See nextcloud/desktop#10024.
      *
      * @param fileId The **numeric** server file id (WebDAV `fileid`). Not the ocId.
-     * @param remoteItemPath The server-side path of the item, used for the PROPFIND that resolves the private link.
+     * @param remoteItemPath The server-side path of the item.
      * @param fileProviderDomainIdentifier The file provider domain identifier for the account that owns the item.
      */
     void copyInternalLinkRequested(const QString &fileId, const QString &remoteItemPath, const QString &fileProviderDomainIdentifier);
@@ -132,7 +134,8 @@ Q_SIGNALS:
      * @param fileBytes The size of the file the user tried to upload, in bytes. -1 if unknown.
      * @param availableBytes Available quota at the upload's parent at the time of refusal, in bytes. -1 if unknown.
      */
-    void insufficientQuotaForItem(const QString &domainIdentifier, const QString &relativePath, const QString &fileName, qint64 fileBytes, qint64 availableBytes);
+    void
+    insufficientQuotaForItem(const QString &domainIdentifier, const QString &relativePath, const QString &fileName, qint64 fileBytes, qint64 availableBytes);
 
     /**
      * @brief Emitted when a file provider extension reports that one or more uploads were refused by the server quota for the given domain.
@@ -158,4 +161,3 @@ private:
 } // namespace Mac
 
 } // namespace OCC
-

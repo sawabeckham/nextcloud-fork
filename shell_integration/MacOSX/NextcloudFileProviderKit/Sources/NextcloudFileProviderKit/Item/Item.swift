@@ -59,12 +59,8 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
                 capabilities.insert(.allowsWriting)
             }
 
-            if permissions.contains("NV") { // Updateable, renameable, moveable
+            if permissions.contains("NV") { // Renameable, moveable
                 capabilities.formUnion([.allowsRenaming, .allowsReparenting])
-
-                if metadata.directory {
-                    capabilities.insert(.allowsAddingSubItems)
-                }
             }
 
             if permissions.contains("CK"), metadata.directory { // Folder not changeable but adding sub-files & -folders
@@ -139,13 +135,22 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         if itemIdentifier == .rootContainer, let rootDisplayName {
             return rootDisplayName
         }
-        return metadata.isTrashed && !metadata.trashbinFileName.isEmpty ?
+        return Self.filename(for: metadata)
+    }
+
+    static func filename(for metadata: SendableItemMetadata) -> String {
+        metadata.isTrashed && !metadata.trashbinFileName.isEmpty ?
             metadata.trashbinFileName : !metadata.fileName.isEmpty ?
             metadata.fileName : "unnamed file"
     }
 
     public var contentType: UTType {
-        if itemIdentifier == .rootContainer || (metadata.contentType.isEmpty && metadata.directory) {
+        Self.contentType(for: metadata)
+    }
+
+    static func contentType(for metadata: SendableItemMetadata) -> UTType {
+        let filename = Self.filename(for: metadata)
+        if metadata.ocId == NSFileProviderItemIdentifier.rootContainer.rawValue || (metadata.contentType.isEmpty && metadata.directory) {
             return .folder
         } else if metadata.contentType == "httpd/unix-directory", metadata.directory {
             let filenameComponents = filename.components(separatedBy: ".")
@@ -319,21 +324,14 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         // - ignored items and freshly-created items that have not been
         //   uploaded yet (`uploaded == false` ⇒ no server-side record).
         // The numeric `fileId` check is defensive — a successfully uploaded
-        // item should always carry one, and `fetchPrivateLinkUrl` requires it
-        // for the deprecated fallback URL. See nextcloud/desktop#10025.
+        // item should always carry one, and internal links require it.
+        // See nextcloud/desktop#10025.
         userInfoDict["displayOpenInBrowser"] = ![.rootContainer, .trashContainer].contains(itemIdentifier)
             && !metadata.isLockFileOfLocalOrigin
             && metadata.uploaded
             && !metadata.fileId.isEmpty
 
-        // Gate the "Copy internal link" context menu action on the same
-        // preconditions as "Open in browser": both actions resolve the same
-        // per-item private link via PROPFIND (with the deprecated
-        // `/index.php/f/<fileId>` URL as fallback), so they share server-side
-        // requirements. A dedicated flag — rather than reusing
-        // `displayOpenInBrowser` — keeps future divergence (e.g. excluding
-        // certain item types from the clipboard but not the browser, or vice
-        // versa) a one-line change. See nextcloud/desktop#10024.
+        // Copying and opening an internal link require the same server file ID.
         userInfoDict["displayCopyInternalLink"] = ![.rootContainer, .trashContainer].contains(itemIdentifier)
             && !metadata.isLockFileOfLocalOrigin
             && metadata.uploaded
@@ -377,7 +375,8 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             account: account.ncKitAccount,
             classFile: NKTypeClassFile.directory.rawValue,
             contentType: "", // Placeholder as not set in original code
-            creationDate: Date(), // Default as not set in original code
+            creationDate: syntheticContainerFallbackDate,
+            date: syntheticContainerFallbackDate,
             directory: true,
             e2eEncrypted: false, // Default as not set in original code
             etag: "", // Placeholder as not set in original code
@@ -390,6 +389,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             ownerId: "", // Placeholder as not set in original code
             ownerDisplayName: "", // Placeholder as not set in original code
             path: "", // Placeholder as not set in original code
+            permissions: "RGDNVCK",
             serverUrl: account.davFilesUrl,
             size: 0, // Default as not set in original code
             uploaded: true,
@@ -405,10 +405,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         // even after the user has enabled it — `displayKeepDownloaded` /
         // `displayAllowAutoEvicting` and `contentPolicy` all derive from the
         // freshly-synthesised (and therefore stale) metadata.
-        if let existing = dbManager.itemMetadata(ocId: metadata.ocId) {
-            metadata.keepDownloaded = existing.keepDownloaded
-            metadata.downloaded = existing.downloaded
-        }
+        metadata.mergePersistedSyntheticContainerState(dbManager: dbManager)
 
         return Item(
             metadata: metadata,
@@ -435,7 +432,8 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             account: account.ncKitAccount,
             classFile: NKTypeClassFile.directory.rawValue,
             contentType: "", // Placeholder as not set in original code
-            creationDate: Date(), // Default as not set in original code
+            creationDate: syntheticContainerFallbackDate,
+            date: syntheticContainerFallbackDate,
             directory: true,
             e2eEncrypted: false, // Default as not set in original code
             etag: "", // Placeholder as not set in original code
@@ -448,6 +446,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             ownerId: "", // Placeholder as not set in original code
             ownerDisplayName: "", // Placeholder as not set in original code
             path: "", // Placeholder as not set in original code
+            permissions: "RGDNVCK",
             serverUrl: account.trashUrl,
             size: 0, // Default as not set in original code
             uploaded: true,
@@ -459,10 +458,7 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         // See the matching rationale in `rootContainer(...)`: merge persisted
         // per-item toggles from the database so the trash container does not
         // forget its state between factory invocations.
-        if let existing = dbManager.itemMetadata(ocId: metadata.ocId) {
-            metadata.keepDownloaded = existing.keepDownloaded
-            metadata.downloaded = existing.downloaded
-        }
+        metadata.mergePersistedSyntheticContainerState(dbManager: dbManager)
 
         return Item(
             metadata: metadata,
@@ -509,10 +505,21 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
         super.init()
     }
 
-    public static func storedItem(identifier: NSFileProviderItemIdentifier, account: Account, remoteInterface: RemoteInterface, dbManager: FilesDatabaseManager, rootDisplayName: String? = nil, log: any FileProviderLogging) async -> Item? {
+    public static func storedItem(
+        identifier: NSFileProviderItemIdentifier,
+        account: Account,
+        remoteInterface: RemoteInterface,
+        dbManager: FilesDatabaseManager,
+        rootDisplayName: String? = nil,
+        taskHandler: @Sendable @escaping (URLSessionTask) -> Void = { _ in },
+        isCancelled: @Sendable @escaping () -> Bool = { Task.isCancelled },
+        log: any FileProviderLogging
+    ) async -> Item? {
         // resolve the given identifier to a record in the model
 
+        guard !isCancelled() else { return nil }
         let remoteSupportsTrash = await remoteInterface.supportsTrash(account: account)
+        guard !isCancelled() else { return nil }
 
         guard identifier != .rootContainer else {
             return Item.rootContainer(
@@ -544,17 +551,21 @@ public final class Item: NSObject, NSFileProviderItem, Sendable {
             await dbManager.parentItemIdentifierWithRemoteFallback(
                 fromMetadata: metadata,
                 remoteInterface: remoteInterface,
-                account: account
+                account: account,
+                taskHandler: taskHandler,
+                isCancelled: isCancelled
             )
         }
 
-        guard let parentItemIdentifier else {
+        guard !isCancelled(), let parentItemIdentifier else {
             return nil
         }
 
         // Display File Actions
 
         let displayFileActions = await Item.typeHasApplicableContextMenuItems(account: account, remoteInterface: remoteInterface, candidate: metadata.contentType)
+
+        guard !isCancelled() else { return nil }
 
         return Item(
             metadata: metadata,

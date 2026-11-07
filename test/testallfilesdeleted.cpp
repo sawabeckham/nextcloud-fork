@@ -8,12 +8,24 @@
  * any purpose.
  */
 
-#include <QtTest>
 #include "syncenginetestutils.h"
-#include <syncengine.h>
+#include <QtTest>
 #include <configfile.h>
+#include <syncengine.h>
 
 using namespace OCC;
+
+static void changeAllFileId(FileInfo &info)
+{
+    info.fileId = generateFileId();
+    if (!info.isDir) {
+        return;
+    }
+    info.etag = generateEtag();
+    for (auto &child : info.children) {
+        changeAllFileId(child);
+    }
+}
 
 /*
  * This test ensure that the SyncEngine::aboutToRemoveAllFiles is correctly called and that when
@@ -37,7 +49,6 @@ private Q_SLOTS:
         QTest::addColumn<bool>("deleteOnRemote");
         QTest::newRow("local") << false;
         QTest::newRow("remote") << true;
-
     }
 
     /*
@@ -51,24 +62,22 @@ private Q_SLOTS:
         ConfigFile config;
         config.setPromptDeleteFiles(true);
 
-        //Just set a blacklist so we can check it is still there. This directory does not exists but
-        // that does not matter for our purposes.
-        QStringList selectiveSyncBlackList = { "Q/" };
-        fakeFolder.syncEngine().journal()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList,
-                                                                selectiveSyncBlackList);
+        // Just set a blacklist so we can check it is still there. This directory does not exists but
+        //  that does not matter for our purposes.
+        QStringList selectiveSyncBlackList = {"Q/"};
+        fakeFolder.syncEngine().journal()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList, selectiveSyncBlackList);
 
         auto initialState = fakeFolder.currentLocalState();
         int aboutToRemoveAllFilesCalled = 0;
-        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles,
-            [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
-                QCOMPARE(aboutToRemoveAllFilesCalled, 0);
-                aboutToRemoveAllFilesCalled++;
-                QCOMPARE(dir, deleteOnRemote ? SyncFileItem::Down : SyncFileItem::Up);
-                callback(true);
-                fakeFolder.syncEngine().journal()->clearFileTable(); // That's what Folder is doing
-            });
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
+            QCOMPARE(aboutToRemoveAllFilesCalled, 0);
+            aboutToRemoveAllFilesCalled++;
+            QCOMPARE(dir, deleteOnRemote ? SyncFileItem::Down : SyncFileItem::Up);
+            callback(true);
+            fakeFolder.syncEngine().journal()->clearFileTable(); // That's what Folder is doing
+        });
 
-        auto &modifier = deleteOnRemote ? fakeFolder.remoteModifier() : static_cast<FileModifier&>(fakeFolder.localModifier());
+        auto &modifier = deleteOnRemote ? fakeFolder.remoteModifier() : static_cast<FileModifier &>(fakeFolder.localModifier());
         const auto childrenKeys = fakeFolder.currentRemoteState().children.keys();
         for (const auto &key : childrenKeys) {
             modifier.remove(key);
@@ -84,8 +93,7 @@ private Q_SLOTS:
 
         // The selective sync blacklist should be not have been deleted.
         bool ok = true;
-        QCOMPARE(fakeFolder.syncEngine().journal()->getSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList, &ok),
-                 selectiveSyncBlackList);
+        QCOMPARE(fakeFolder.syncEngine().journal()->getSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList, &ok), selectiveSyncBlackList);
     }
 
     void testAllFilesDeletedDelete_data()
@@ -102,15 +110,14 @@ private Q_SLOTS:
         FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
 
         int aboutToRemoveAllFilesCalled = 0;
-        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles,
-            [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
-                QCOMPARE(aboutToRemoveAllFilesCalled, 0);
-                aboutToRemoveAllFilesCalled++;
-                QCOMPARE(dir, deleteOnRemote ? SyncFileItem::Down : SyncFileItem::Up);
-                callback(false);
-            });
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
+            QCOMPARE(aboutToRemoveAllFilesCalled, 0);
+            aboutToRemoveAllFilesCalled++;
+            QCOMPARE(dir, deleteOnRemote ? SyncFileItem::Down : SyncFileItem::Up);
+            callback(false);
+        });
 
-        auto &modifier = deleteOnRemote ? fakeFolder.remoteModifier() : static_cast<FileModifier&>(fakeFolder.localModifier());
+        auto &modifier = deleteOnRemote ? fakeFolder.remoteModifier() : static_cast<FileModifier &>(fakeFolder.localModifier());
         const auto childrenKeys = fakeFolder.currentRemoteState().children.keys();
         for (const auto &key : childrenKeys) {
             modifier.remove(key);
@@ -130,18 +137,49 @@ private Q_SLOTS:
         QCOMPARE(fakeFolder.currentLocalState().children.count(), 0);
     }
 
+    void testNotDeleteMetaDataChange()
+    {
+        /**
+         * This test make sure that we don't popup a file deleted message if all the metadata have
+         * been updated (for example when the server is upgraded or something)
+         **/
+
+        FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
+        // We never remove all files.
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&] {
+            QVERIFY(false);
+        });
+        QVERIFY(fakeFolder.syncOnce());
+
+        const auto childrenKeys = fakeFolder.currentRemoteState().children.keys();
+        for (const auto &s : childrenKeys) {
+            fakeFolder.syncJournal().avoidRenamesOnNextSync(s); // clears all the fileid and inodes.
+        }
+        fakeFolder.localModifier().remove("A/a1");
+        auto expectedState = fakeFolder.currentLocalState();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(fakeFolder.currentLocalState(), expectedState);
+        QCOMPARE(fakeFolder.currentRemoteState(), expectedState);
+
+        fakeFolder.remoteModifier().remove("B/b1");
+        changeAllFileId(fakeFolder.remoteModifier());
+        expectedState = fakeFolder.currentRemoteState();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(fakeFolder.currentLocalState(), expectedState);
+        QCOMPARE(fakeFolder.currentRemoteState(), expectedState);
+    }
+
     void testResetServer()
     {
         FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
 
         int aboutToRemoveAllFilesCalled = 0;
-        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles,
-            [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
-                QCOMPARE(aboutToRemoveAllFilesCalled, 0);
-                aboutToRemoveAllFilesCalled++;
-                QCOMPARE(dir, SyncFileItem::Down);
-                callback(false);
-            });
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&](SyncFileItem::Direction dir, std::function<void(bool)> callback) {
+            QCOMPARE(aboutToRemoveAllFilesCalled, 0);
+            aboutToRemoveAllFilesCalled++;
+            QCOMPARE(dir, SyncFileItem::Down);
+            callback(false);
+        });
 
         // Some small changes
         fakeFolder.localModifier().mkdir("Q");
@@ -159,7 +197,6 @@ private Q_SLOTS:
         // Now, aboutToRemoveAllFiles with down as a direction
         QVERIFY(fakeFolder.syncOnce());
         QCOMPARE(aboutToRemoveAllFilesCalled, 1);
-
     }
 
     void testDataFingetPrint_data()
@@ -172,14 +209,14 @@ private Q_SLOTS:
     void testDataFingetPrint()
     {
         QFETCH(bool, hasInitialFingerPrint);
-        FakeFolder fakeFolder{ FileInfo::A12_B12_C12_S12() };
+        FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
         fakeFolder.remoteModifier().setContents("C/c1", 'N');
         fakeFolder.remoteModifier().setModTime("C/c1", QDateTime::currentDateTimeUtc().addDays(-2));
         fakeFolder.remoteModifier().remove("C/c2");
         if (hasInitialFingerPrint) {
             fakeFolder.remoteModifier().extraDavProperties = "<oc:data-fingerprint>initial_finger_print</oc:data-fingerprint>";
         } else {
-            //Server support finger print, but none is set.
+            // Server support finger print, but none is set.
             fakeFolder.remoteModifier().extraDavProperties = "<oc:data-fingerprint></oc:data-fingerprint>";
         }
 
@@ -251,15 +288,15 @@ private Q_SLOTS:
         QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
     }
 
-    void testSingleFileRenamed() {
+    void testSingleFileRenamed()
+    {
         FakeFolder fakeFolder{FileInfo{}};
 
         int aboutToRemoveAllFilesCalled = 0;
-        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles,
-            [&](SyncFileItem::Direction , std::function<void(bool)> ) {
-                aboutToRemoveAllFilesCalled++;
-                QFAIL("should not be called");
-            });
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&](SyncFileItem::Direction, std::function<void(bool)>) {
+            aboutToRemoveAllFilesCalled++;
+            QFAIL("should not be called");
+        });
 
         // add a single file
         fakeFolder.localModifier().insert("hello.txt");
@@ -275,31 +312,28 @@ private Q_SLOTS:
         QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
     }
 
-    void testSelectiveSyncNoPopup() {
+    void testSelectiveSyncNoPopup()
+    {
         // Unselecting all folder should not cause the popup to be shown
         FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
 
         int aboutToRemoveAllFilesCalled = 0;
-        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles,
-            [&](SyncFileItem::Direction , std::function<void(bool)>) {
-                aboutToRemoveAllFilesCalled++;
-                QFAIL("should not be called");
-            });
+        QObject::connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToRemoveAllFiles, [&](SyncFileItem::Direction, std::function<void(bool)>) {
+            aboutToRemoveAllFilesCalled++;
+            QFAIL("should not be called");
+        });
 
         QVERIFY(fakeFolder.syncOnce());
         QCOMPARE(aboutToRemoveAllFilesCalled, 0);
         QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
 
-        fakeFolder.syncEngine().journal()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList,
-            QStringList() << "A/" << "B/" << "C/" << "S/");
+        fakeFolder.syncEngine().journal()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList, QStringList() << "A/" << "B/" << "C/" << "S/");
 
         QVERIFY(fakeFolder.syncOnce());
         QCOMPARE(fakeFolder.currentLocalState(), FileInfo{}); // all files should be one locally
         QCOMPARE(fakeFolder.currentRemoteState(), FileInfo::A12_B12_C12_S12()); // Server not changed
         QCOMPARE(aboutToRemoveAllFilesCalled, 0); // But we did not show the popup
     }
-
-
 };
 
 QTEST_GUILESS_MAIN(TestAllFilesDeleted)

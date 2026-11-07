@@ -4,35 +4,36 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#include "common/asserts.h"
-#include "networkjobs.h"
-#include "account.h"
-#include "owncloudpropagator.h"
-#include "httplogger.h"
 #include "accessmanager.h"
+#include "account.h"
+#include "common/asserts.h"
+#include "httplogger.h"
+#include "networkjobs.h"
+#include "owncloudpropagator.h"
 
 #include "creds/abstractcredentials.h"
 
-#include <QLoggingCategory>
+#include <QAuthenticator>
+#include <QBuffer>
+#include <QCoreApplication>
 #include <QHstsPolicy>
+#include <QLoggingCategory>
+#include <QMetaEnum>
+#include <QMutex>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QSslConfiguration>
-#include <QBuffer>
-#include <QXmlStreamReader>
-#include <QStringList>
-#include <QStack>
-#include <QTimer>
-#include <QMutex>
-#include <QCoreApplication>
-#include <QAuthenticator>
-#include <QMetaEnum>
 #include <QRegularExpression>
+#include <QSslConfiguration>
+#include <QStack>
+#include <QStringList>
+#include <QTimer>
+#include <QXmlStreamReader>
 
 Q_DECLARE_METATYPE(QTimer *)
 
-namespace OCC {
+namespace OCC
+{
 
 Q_LOGGING_CATEGORY(lcNetworkJob, "nextcloud.sync.networkjob", QtInfoMsg)
 
@@ -91,7 +92,9 @@ void AbstractNetworkJob::setupConnections(QNetworkReply *reply)
     connect(reply, &QNetworkReply::metaDataChanged, this, &AbstractNetworkJob::networkActivity);
     connect(reply, &QNetworkReply::downloadProgress, this, &AbstractNetworkJob::networkActivity);
     connect(reply, &QNetworkReply::uploadProgress, this, &AbstractNetworkJob::networkActivity);
-    connect(reply, &QNetworkReply::redirected, this, [reply, this] (const QUrl &url) { Q_EMIT redirected(reply, url, 0);});
+    connect(reply, &QNetworkReply::redirected, this, [reply, this](const QUrl &url) {
+        Q_EMIT redirected(reply, url, 0);
+    });
 }
 
 QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QIODevice *requestBody)
@@ -110,10 +113,7 @@ QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUr
     return reply;
 }
 
-QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb,
-                                               const QUrl &url,
-                                               QNetworkRequest req,
-                                               const QByteArray &requestBody)
+QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, const QByteArray &requestBody)
 {
     if (AbstractNetworkJob::enableTimeout) {
         qCDebug(lcNetworkJob()) << "set transfer timeout" << _timeoutDuration;
@@ -126,10 +126,7 @@ QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb,
     return reply;
 }
 
-QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb,
-                                               const QUrl &url,
-                                               QNetworkRequest req,
-                                               QHttpMultiPart *requestBody)
+QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QHttpMultiPart *requestBody)
 {
     if (AbstractNetworkJob::enableTimeout) {
         qCDebug(lcNetworkJob()) << "set transfer timeout" << _timeoutDuration;
@@ -181,15 +178,11 @@ void AbstractNetworkJob::slotFinished()
     // Qt doesn't yet transparently resend HTTP2 requests, do so here
     const auto maxHttp2Resends = 3;
     QByteArray verb = HttpLogger::requestVerb(*reply());
-    if (_reply->error() == QNetworkReply::ContentReSendError
-        && _reply->attribute(QNetworkRequest::Http2WasUsedAttribute).toBool()) {
-
+    if (_reply->error() == QNetworkReply::ContentReSendError && _reply->attribute(QNetworkRequest::Http2WasUsedAttribute).toBool()) {
         if ((_requestBody && !_requestBody->isSequential()) || verb.isEmpty()) {
-            qCWarning(lcNetworkJob) << "Can't resend HTTP2 request, verb or body not suitable"
-                                    << _reply->request().url() << verb << _requestBody;
+            qCWarning(lcNetworkJob) << "Can't resend HTTP2 request, verb or body not suitable" << _reply->request().url() << verb << _requestBody;
         } else if (_http2ResendCount >= maxHttp2Resends) {
-            qCWarning(lcNetworkJob) << "Not resending HTTP2 request, number of resends exhausted"
-                                    << _reply->request().url() << _http2ResendCount;
+            qCWarning(lcNetworkJob) << "Not resending HTTP2 request, number of resends exhausted" << _reply->request().url() << _http2ResendCount;
         } else {
             qCInfo(lcNetworkJob) << "HTTP2 resending" << _reply->request().url();
             _http2ResendCount++;
@@ -200,11 +193,7 @@ void AbstractNetworkJob::slotFinished()
                 }
                 _requestBody->seek(0);
             }
-            sendRequest(
-                verb,
-                _reply->request().url(),
-                _reply->request(),
-                _requestBody);
+            sendRequest(verb, _reply->request().url(), _reply->request(), _requestBody);
             return;
         }
     }
@@ -222,8 +211,7 @@ void AbstractNetworkJob::slotFinished()
         }
 
         if (!_ignoreCredentialFailure || _reply->error() != QNetworkReply::AuthenticationRequiredError) {
-            qCWarning(lcNetworkJob) << _reply->error() << errorString()
-                                    << _reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+            qCWarning(lcNetworkJob) << _reply->error() << errorString() << _reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
             if (_reply->error() == QNetworkReply::ProxyAuthenticationRequiredError) {
                 qCWarning(lcNetworkJob) << _reply->rawHeader("Proxy-Authenticate");
             }
@@ -246,10 +234,7 @@ void AbstractNetworkJob::slotFinished()
         // moves these arguments to the body if no explicit body is specified.
         // This can cause problems with redirected requests, because the redirect url
         // will no longer contain these query arguments.
-        if (reply()->operation() == QNetworkAccessManager::PostOperation
-            && requestedUrl.hasQuery()
-            && !redirectUrl.hasQuery()
-            && !_requestBody) {
+        if (reply()->operation() == QNetworkAccessManager::PostOperation && requestedUrl.hasQuery() && !redirectUrl.hasQuery() && !_requestBody) {
             qCWarning(lcNetworkJob) << "Redirecting a POST request with an implicit body loses that body";
         }
 
@@ -261,6 +246,8 @@ void AbstractNetworkJob::slotFinished()
             qCWarning(lcNetworkJob) << this << "Redirect loop detected!";
         } else if (_requestBody && _requestBody->isSequential()) {
             qCWarning(lcNetworkJob) << this << "cannot redirect request with sequential body";
+        } else if (_requestBody && !(requestedUrl.host() == redirectUrl.host() && requestedUrl.port() == redirectUrl.port())) {
+            qCWarning(lcNetworkJob) << this << "cannot redirect request with body to different origin";
         } else if (verb.isEmpty()) {
             qCWarning(lcNetworkJob) << this << "cannot redirect request: could not detect original verb";
         } else {
@@ -273,9 +260,9 @@ void AbstractNetworkJob::slotFinished()
                 // Create the redirected request and send it
                 qCInfo(lcNetworkJob) << "Redirecting" << verb << requestedUrl << redirectUrl;
                 if (_requestBody) {
-                    if(!_requestBody->isOpen()) {
+                    if (!_requestBody->isOpen()) {
                         // Avoid the QIODevice::seek (QBuffer): The device is not open warning message
-                       _requestBody->open(QIODevice::ReadOnly);
+                        _requestBody->open(QIODevice::ReadOnly);
                     }
                     _requestBody->seek(0);
                 }
@@ -284,8 +271,8 @@ void AbstractNetworkJob::slotFinished()
 
                 if (!(requestedUrl.host() == redirectUrl.host() && requestedUrl.port() == redirectUrl.port())) {
                     qCWarning(lcNetworkJob).nospace() << "redirect target mismatches origin, removing credentials"
-                        << " origin=" << requestedUrl.host() << ":" << requestedUrl.port()
-                        << " target=" << redirectUrl.host() << ":" << redirectUrl.port();
+                                                      << " origin=" << requestedUrl.host() << ":" << requestedUrl.port() << " target=" << redirectUrl.host()
+                                                      << ":" << redirectUrl.port();
 
                     auto headers = request.headers();
                     headers.removeAll(QHttpHeaders::WellKnownHeader::Authorization);
@@ -293,11 +280,7 @@ void AbstractNetworkJob::slotFinished()
                     request.setAttribute(AbstractCredentials::DontAddCredentialsAttribute, true);
                 }
 
-                sendRequest(
-                    verb,
-                    redirectUrl,
-                    request,
-                    _requestBody);
+                sendRequest(verb, redirectUrl, request, _requestBody);
                 return;
             }
         }
@@ -332,7 +315,7 @@ QByteArray AbstractNetworkJob::responseTimestamp()
 
 QByteArray AbstractNetworkJob::requestId()
 {
-    return  _reply ? _reply->request().rawHeader("X-Request-ID") : QByteArray();
+    return _reply ? _reply->request().rawHeader("X-Request-ID") : QByteArray();
 }
 
 QString AbstractNetworkJob::errorString() const
@@ -398,7 +381,8 @@ void AbstractNetworkJob::start()
     qCInfo(lcNetworkJob) << metaObject()->className() << "created for" << displayUrl << "+" << path() << parentMetaObjectName;
 }
 
-QString AbstractNetworkJob::replyStatusString() {
+QString AbstractNetworkJob::replyStatusString()
+{
     Q_ASSERT(reply());
     if (reply()->error() == QNetworkReply::NoError) {
         return QLatin1String("OK");
@@ -469,84 +453,112 @@ QString networkReplyErrorString(const QNetworkReply &reply)
 
     QString userFriendlyMessage;
     switch (httpStatus) {
-        case 400: //Bad Request
-            userFriendlyMessage = QObject::tr("We couldn’t process your request. Please try syncing again later. If this keeps happening, contact your server administrator for help.");
-            break;
-        case 401: //Unauthorized
-            userFriendlyMessage = QObject::tr("You need to sign in to continue. If you have trouble with your credentials, please reach out to your server administrator.");
-            break;
-        case 403: //Forbidden
-            userFriendlyMessage = QObject::tr("You don’t have access to this resource. If you think this is a mistake, please contact your server administrator.");
-            break;
-        case 404: //Not Found
-            userFriendlyMessage = QObject::tr("We couldn’t find what you were looking for. It might have been moved or deleted. If you need help, contact your server administrator.");
-            break;
-        case 407: //Proxy Authentication Required
-            userFriendlyMessage = QObject::tr("It seems you are using a proxy that required authentication. Please check your proxy settings and credentials. If you need help, contact your server administrator.");
-            break;
-        case 408: //Request Timeout
-            userFriendlyMessage = QObject::tr("The request is taking longer than usual. Please try syncing again. If it still doesn’t work, reach out to your server administrator.");
-            break;
-        case 409: //Conflict
-            userFriendlyMessage = QObject::tr("Server files changed while you were working. Please try syncing again. Contact your server administrator if the issue persists.");
-            break;
-        case 410: //Gone
-            userFriendlyMessage = QObject::tr("This folder or file isn’t available anymore. If you need assistance, please contact your server administrator.");
-            break;
-        case 412: //Precondition failed
-            userFriendlyMessage = QObject::tr("The request could not be completed because some required conditions were not met. Please try syncing again later. If you need assistance, please contact your server administrator.");
-            break;
-        case 413: //Payload Too Large
-            userFriendlyMessage = QObject::tr("The file is too big to upload. You might need to choose a smaller file or contact your server administrator for assistance.");
-            break;
-        case 414: //URI Too Long
-            userFriendlyMessage = QObject::tr("The address used to make the request is too long for the server to handle. Please try shortening the information you’re sending or contact your server administrator for assistance.");
-            break;
-        case 415: //Unsupported Media Type
-            userFriendlyMessage = QObject::tr("This file type isn’t supported. Please contact your server administrator for assistance.");
-            break;
-        case 422: //Unprocessable Entity
-            userFriendlyMessage = QObject::tr("The server couldn’t process your request because some information was incorrect or incomplete. Please try syncing again later, or contact your server administrator for assistance.");
-            break;
-        case 423: //Locked
-            userFriendlyMessage = QObject::tr("The resource you are trying to access is currently locked and cannot be modified. Please try changing it later, or contact your server administrator for assistance.");
-            break;
-        case 428: //Precondition Required
-            userFriendlyMessage = QObject::tr("This request could not be completed because it is missing some required conditions. Please try again later, or contact your server administrator for help.");
-            break;
-        case 429: //Too Many Requests
-            userFriendlyMessage = QObject::tr("You made too many requests. Please wait and try again. If you keep seeing this, your server administrator can help.");
-            break;
-        case 500: //Internal Server Error
-            userFriendlyMessage = QObject::tr("Something went wrong on the server. Please try syncing again later, or contact your server administrator if the issue persists.");
-            break;
-        case 501: //Not Implemented
-            userFriendlyMessage = QObject::tr("The server does not recognize the request method. Please contact your server administrator for help.");
-            break;
-        case 502: //Bad Gateway
-            userFriendlyMessage = QObject::tr("We’re having trouble connecting to the server. Please try again soon. If the issue persists, your server administrator can help you.");
-            break;
-        case 503: //Service Unavailable
-            userFriendlyMessage = QObject::tr("The server is busy right now. Please try connecting again in a few minutes or contact your server administrator if it’s urgent.");
-            break;
-        case 504: //Gateway Timeout
-            userFriendlyMessage = QObject::tr("It’s taking too long to connect to the server. Please try again later. If you need help, contact your server administrator.");
-            break;
-        case 505: //HTTP Version Not Supported
-            userFriendlyMessage = QObject::tr("The server does not support the version of the connection being used. Contact your server administrator for help.");
-            break;
-        case 507: //Insufficient Storage
-            userFriendlyMessage = QObject::tr("The server does not have enough space to complete your request. Please check how much quota your user has by contacting your server administrator.");
-            break;
-        case 511: //Network Authentication Required
-            userFriendlyMessage = QObject::tr("Your network needs extra authentication. Please check your connection. Contact your server administrator for help if the issue persists.");
-            break;
-        case 513: //Resource Not Authorized
-            userFriendlyMessage = QObject::tr("You don’t have permission to access this resource. If you believe this is an error, contact your server administrator to ask for assistance.");
-            break;
-        default:
-            userFriendlyMessage = QObject::tr("An unexpected error occurred. Please try syncing again or contact your server administrator if the issue continues.");
-            break;
+    case 400: // Bad Request
+        userFriendlyMessage = QObject::tr(
+            "We couldn’t process your request. Please try syncing again later. If this keeps happening, contact your server administrator for help.");
+        break;
+    case 401: // Unauthorized
+        userFriendlyMessage =
+            QObject::tr("You need to sign in to continue. If you have trouble with your credentials, please reach out to your server administrator.");
+        break;
+    case 403: // Forbidden
+        userFriendlyMessage = QObject::tr("You don’t have access to this resource. If you think this is a mistake, please contact your server administrator.");
+        break;
+    case 404: // Not Found
+        userFriendlyMessage = QObject::tr(
+            "We couldn’t find what you were looking for. It might have been moved or deleted. If you need help, contact your server administrator.");
+        break;
+    case 407: // Proxy Authentication Required
+        userFriendlyMessage = QObject::tr(
+            "It seems you are using a proxy that required authentication. Please check your proxy settings and credentials. If you need help, contact your "
+            "server administrator.");
+        break;
+    case 408: // Request Timeout
+        userFriendlyMessage =
+            QObject::tr("The request is taking longer than usual. Please try syncing again. If it still doesn’t work, reach out to your server administrator.");
+        break;
+    case 409: // Conflict
+        userFriendlyMessage =
+            QObject::tr("Server files changed while you were working. Please try syncing again. Contact your server administrator if the issue persists.");
+        break;
+    case 410: // Gone
+        userFriendlyMessage = QObject::tr("This folder or file isn’t available anymore. If you need assistance, please contact your server administrator.");
+        break;
+    case 412: // Precondition failed
+        userFriendlyMessage = QObject::tr(
+            "The request could not be completed because some required conditions were not met. Please try syncing again later. If you need assistance, please "
+            "contact your server administrator.");
+        break;
+    case 413: // Payload Too Large
+        userFriendlyMessage =
+            QObject::tr("The file is too big to upload. You might need to choose a smaller file or contact your server administrator for assistance.");
+        break;
+    case 414: // URI Too Long
+        userFriendlyMessage = QObject::tr(
+            "The address used to make the request is too long for the server to handle. Please try shortening the information you’re sending or contact your "
+            "server administrator for assistance.");
+        break;
+    case 415: // Unsupported Media Type
+        userFriendlyMessage = QObject::tr("This file type isn’t supported. Please contact your server administrator for assistance.");
+        break;
+    case 422: // Unprocessable Entity
+        userFriendlyMessage = QObject::tr(
+            "The server couldn’t process your request because some information was incorrect or incomplete. Please try syncing again later, or contact your "
+            "server administrator for assistance.");
+        break;
+    case 423: // Locked
+        userFriendlyMessage = QObject::tr(
+            "The resource you are trying to access is currently locked and cannot be modified. Please try changing it later, or contact your server "
+            "administrator for assistance.");
+        break;
+    case 428: // Precondition Required
+        userFriendlyMessage = QObject::tr(
+            "This request could not be completed because it is missing some required conditions. Please try again later, or contact your server administrator "
+            "for help.");
+        break;
+    case 429: // Too Many Requests
+        userFriendlyMessage =
+            QObject::tr("You made too many requests. Please wait and try again. If you keep seeing this, your server administrator can help.");
+        break;
+    case 500: // Internal Server Error
+        userFriendlyMessage =
+            QObject::tr("Something went wrong on the server. Please try syncing again later, or contact your server administrator if the issue persists.");
+        break;
+    case 501: // Not Implemented
+        userFriendlyMessage = QObject::tr("The server does not recognize the request method. Please contact your server administrator for help.");
+        break;
+    case 502: // Bad Gateway
+        userFriendlyMessage =
+            QObject::tr("We’re having trouble connecting to the server. Please try again soon. If the issue persists, your server administrator can help you.");
+        break;
+    case 503: // Service Unavailable
+        userFriendlyMessage =
+            QObject::tr("The server is busy right now. Please try connecting again in a few minutes or contact your server administrator if it’s urgent.");
+        break;
+    case 504: // Gateway Timeout
+        userFriendlyMessage =
+            QObject::tr("It’s taking too long to connect to the server. Please try again later. If you need help, contact your server administrator.");
+        break;
+    case 505: // HTTP Version Not Supported
+        userFriendlyMessage = QObject::tr("The server does not support the version of the connection being used. Contact your server administrator for help.");
+        break;
+    case 507: // Insufficient Storage
+        userFriendlyMessage = QObject::tr(
+            "The server does not have enough space to complete your request. Please check how much quota your user has by contacting your server "
+            "administrator.");
+        break;
+    case 511: // Network Authentication Required
+        userFriendlyMessage = QObject::tr(
+            "Your network needs extra authentication. Please check your connection. Contact your server administrator for help if the issue persists.");
+        break;
+    case 513: // Resource Not Authorized
+        userFriendlyMessage = QObject::tr(
+            "You don’t have permission to access this resource. If you believe this is an error, contact your server administrator to ask for assistance.");
+        break;
+    default:
+        userFriendlyMessage =
+            QObject::tr("An unexpected error occurred. Please try syncing again or contact your server administrator if the issue continues.");
+        break;
     }
 
     return userFriendlyMessage;

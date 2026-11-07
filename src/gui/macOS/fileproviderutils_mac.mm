@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "fileproviderutils_mac.h"
+#include "account.h"
 #include "configfile.h"
 #include "fileproviderutils.h"
-#include "account.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -15,15 +16,122 @@
 
 #import <FileProvider/FileProvider.h>
 
-static_assert(__has_feature(objc_arc), "fileproviderutils_mac requires ARC.");
+namespace
+{
+constexpr auto fileProviderRequestTimeoutMs = 5000;
+}
 
-namespace OCC {
+namespace OCC
+{
 
-namespace Mac {
+namespace Mac
+{
 
-namespace FileProviderUtils {
+namespace FileProviderUtils
+{
 
 Q_LOGGING_CATEGORY(lcMacFileProviderUtils, "nextcloud.gui.macfileproviderutils", QtInfoMsg)
+
+bool waitForFileProviderReplies(const NSUInteger requestCount, const char *operation, void (^startRequests)(RequestReplyHandler), NSArray **results)
+{
+    if (requestCount == 0) {
+        *results = @[];
+        return true;
+    }
+
+    const auto values = [NSMutableArray new];
+    const auto semaphore = dispatch_semaphore_create(0);
+    __block auto remaining = requestCount;
+    __block auto closed = false;
+    __block NSError *replyError = nil;
+
+    startRequests(^BOOL(id value, NSError *error) {
+        @synchronized(values) {
+            if (closed) {
+                return NO;
+            }
+
+            if (error != nil) {
+                if (replyError == nil) {
+                    replyError = error;
+                }
+            } else if (value != nil) {
+                [values addObject:value];
+            }
+            if (--remaining == 0) {
+                closed = true;
+                dispatch_semaphore_signal(semaphore);
+            }
+            return YES;
+        }
+    });
+
+    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, fileProviderRequestTimeoutMs * NSEC_PER_MSEC));
+    auto completed = false;
+    NSError *acceptedError = nil;
+    @synchronized(values) {
+        closed = true;
+        completed = remaining == 0;
+        *results = values.copy;
+        acceptedError = replyError;
+    }
+
+    if (!completed) {
+        qCWarning(lcMacFileProviderUtils) << "Timed out while" << operation;
+        return false;
+    }
+    if (acceptedError != nil) {
+        qCWarning(lcMacFileProviderUtils) << "Error while" << operation << acceptedError.code << acceptedError.localizedDescription;
+        return false;
+    }
+
+    return true;
+}
+
+bool waitForFileProviderRequest(const char *operation, void (^startRequest)(RequestReplyHandler), id *result)
+{
+    if (result != nullptr) {
+        *result = nil;
+    }
+    NSArray *values = nil;
+    const auto success = waitForFileProviderReplies(1, operation, startRequest, &values);
+    if (success && result != nullptr) {
+        *result = values.firstObject;
+    }
+    return success;
+}
+
+NSArray<NSFileProviderDomain *> *fileProviderDomains(bool *success)
+{
+    id result = nil;
+    const auto received = waitForFileProviderRequest(
+        "getting file provider domains",
+        ^(RequestReplyHandler reply) {
+            [NSFileProviderManager
+                getDomainsWithCompletionHandler:^(NSArray<NSFileProviderDomain *> *domains, NSError *error) { reply([domains copy], error); }];
+        },
+        &result);
+    if (success != nullptr) {
+        *success = received;
+    }
+    return result;
+}
+
+NSURL *userVisibleURLForItem(NSFileProviderManager *manager, NSFileProviderItemIdentifier itemIdentifier)
+{
+    if (manager == nil) {
+        return nil;
+    }
+
+    id result = nil;
+    waitForFileProviderRequest(
+        "getting user-visible URL",
+        ^(RequestReplyHandler reply) {
+            [manager getUserVisibleURLForItemIdentifier:itemIdentifier completionHandler:^(NSURL *url, NSError *error) { reply(url, error); }];
+        },
+        &result);
+    return result;
+}
 
 inline bool hasBundleExtension(const QString &domainId)
 {
@@ -78,43 +186,27 @@ QDir fileProviderDomainSupportDirectory(const QString domainIdentifier)
 
 NSFileProviderManager *managerForDomainIdentifier(const QString &domainIdentifier)
 {
-    dispatch_group_t dispatchGroup = dispatch_group_create();
-    dispatch_group_enter(dispatchGroup);
-
-    __block NSFileProviderDomain *domain = nil;
-
-    [NSFileProviderManager getDomainsWithCompletionHandler:^(NSArray<NSFileProviderDomain *> * const domains, NSError * const error) {
-        if (error != nil) {
-            qCWarning(lcMacFileProviderUtils) << "Could not get existing domains because of error:"
-                                              << error.code
-                                              << error.localizedDescription;
-            dispatch_group_leave(dispatchGroup);
-            return;
-        }
-
-        for (NSFileProviderDomain * const candidate in domains) {
-            if (domainIdentifier == QString::fromNSString(candidate.identifier)) {
-                domain = candidate;
-                break;
-            }
-        }
-
-        dispatch_group_leave(dispatchGroup);
-    }];
-
-    dispatch_group_wait(dispatchGroup, DISPATCH_TIME_FOREVER);
-
-    if (domain == nil) {
-        qCWarning(lcMacFileProviderUtils) << "Received null domain for identifier"
-                                          << domainIdentifier
-                                          << "cannot acquire manager";
+    const auto domains = fileProviderDomains();
+    if (domains == nil) {
         return nil;
     }
 
-    NSFileProviderManager * const manager = [NSFileProviderManager managerForDomain:domain];
+    NSFileProviderDomain *domain = nil;
+    for (NSFileProviderDomain *const candidate in domains) {
+        if (domainIdentifier == QString::fromNSString(candidate.identifier)) {
+            domain = candidate;
+            break;
+        }
+    }
+
+    if (domain == nil) {
+        qCWarning(lcMacFileProviderUtils) << "Received null domain for identifier" << domainIdentifier << "cannot acquire manager";
+        return nil;
+    }
+
+    NSFileProviderManager *const manager = [NSFileProviderManager managerForDomain:domain];
     if (manager == nil) {
-        qCWarning(lcMacFileProviderUtils) << "Received null manager for domain"
-                                          << domainIdentifier;
+        qCWarning(lcMacFileProviderUtils) << "Received null manager for domain" << domainIdentifier;
     }
 
     return manager;

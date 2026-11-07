@@ -24,7 +24,8 @@ class QWidget;
 class QHeaderView;
 class ExcludedFiles;
 
-namespace OCC {
+namespace OCC
+{
 
 class AbstractCredentials;
 class Migration;
@@ -47,8 +48,11 @@ class OWNCLOUDSYNC_EXPORT ConfigFile
 public:
     ConfigFile();
 
-    enum Scope { UserScope,
-        SystemScope, LegacyScope };
+    enum Scope {
+        UserScope,
+        SystemScope,
+        LegacyScope,
+    };
 
     [[nodiscard]] QString configPath() const;
     [[nodiscard]] QString configFile() const;
@@ -128,10 +132,11 @@ public:
 
     // proxy settings
     void setProxyType(int proxyType,
-        const QString &host = QString(),
-        int port = 0, bool needsAuth = false,
-        const QString &user = QString(),
-        const QString &pass = QString());
+                      const QString &host = QString(),
+                      int port = 0,
+                      bool needsAuth = false,
+                      const QString &user = QString(),
+                      const QString &pass = QString());
 
     [[nodiscard]] int proxyType() const;
     [[nodiscard]] QString proxyHostName() const;
@@ -163,6 +168,8 @@ public:
     /** [checked, size in MB] **/
     [[nodiscard]] QPair<bool, qint64> newBigFolderSizeLimit() const;
     void setNewBigFolderSizeLimit(bool isChecked, qint64 mbytes);
+    /** @brief Whether new classic sync folders start with no remote folders selected. */
+    [[nodiscard]] bool wizardSelectiveSyncDefaultNothing() const;
     [[nodiscard]] bool notifyExistingFoldersOverLimit() const;
     void setNotifyExistingFoldersOverLimit(const bool notify);
     [[nodiscard]] bool stopSyncingExistingFoldersOverLimit() const;
@@ -349,6 +356,7 @@ public:
     static constexpr char confirmExternalStorageC[] = "confirmExternalStorage";
     static constexpr char useNewBigFolderSizeLimitC[] = "useNewBigFolderSizeLimit";
     static constexpr char newBigFolderSizeLimitC[] = "newBigFolderSizeLimit";
+    static constexpr char wizardSelectiveSyncDefaultNothingC[] = "wizardSelectiveSyncDefaultNothing";
     static constexpr char notifyExistingFoldersOverLimitC[] = "notifyExistingFoldersOverLimit";
     static constexpr char stopSyncingExistingFoldersOverLimitC[] = "stopSyncingExistingFoldersOverLimit";
     static constexpr char moveToTrashC[] = "moveToTrash";
@@ -372,8 +380,7 @@ private:
     [[nodiscard]] ResolvedSetting
     resolveSetting(const QString &name, const QVariant &builtinDefault, const QString &connectionGroupName, const ServerManagedSettings &serverSettings) const;
 
-    [[nodiscard]] QVariant getValue(const QString &param, const QString &group = QString(),
-        const QVariant &defaultValue = QVariant()) const;
+    [[nodiscard]] QVariant getValue(const QString &param, const QString &group = QString(), const QVariant &defaultValue = QVariant()) const;
     void setValue(const QString &key, const QVariant &value);
 
     [[nodiscard]] QString keychainProxyPasswordKey() const;

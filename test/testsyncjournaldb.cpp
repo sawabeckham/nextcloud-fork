@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
  * SPDX-FileCopyrightText: 2014 ownCloud, Inc.
  * SPDX-License-Identifier: CC0-1.0
- * 
+ *
  * This software is in the public domain, furnished "as is", without technical
  * support, and with no warranty, express or implied, as to its usefulness for
  * any purpose.
@@ -128,9 +128,10 @@ private Q_SLOTS:
         QCOMPARE(storedRecord._folderQuota.bytesUsed, 100);
     }
 
-    void testFolderMigration() {
-        const auto quotaBytesUsed =  QStringLiteral("quotaBytesUsed");
-        const auto quotaBytesAvailable =  QStringLiteral("quotaBytesAvailable");
+    void testFolderMigration()
+    {
+        const auto quotaBytesUsed = QStringLiteral("quotaBytesUsed");
+        const auto quotaBytesAvailable = QStringLiteral("quotaBytesAvailable");
         const auto metadata = QStringLiteral("metadata");
         const auto columnsBeforeRemoval = _db.tableColumns(metadata.toLatin1());
         QCOMPARE_GT(columnsBeforeRemoval.indexOf(quotaBytesUsed.toLatin1()), -1);
@@ -143,6 +144,82 @@ private Q_SLOTS:
         QVERIFY(columnsAfterConnect.indexOf(quotaBytesAvailable.toLatin1()) > -1);
         QVERIFY(_db.hasDefaultValue(quotaBytesUsed));
         QVERIFY(_db.hasDefaultValue(quotaBytesAvailable));
+    }
+
+    void testUniqueInodeIndexRemoval_data()
+    {
+        QTest::addColumn<bool>("hasUniqueInodeIndex");
+
+        QTest::newRow("existing-index") << true;
+        QTest::newRow("already-removed") << false;
+    }
+
+    void testUniqueInodeIndexRemoval()
+    {
+        QFETCH(bool, hasUniqueInodeIndex);
+
+        SyncJournalDb journal(_tempDir.filePath(u"inode-index-%1.db"_s.arg(hasUniqueInodeIndex)));
+        auto records = QList<SyncJournalFileRecord>{};
+        for (const auto &path : QByteArrayList{"existing", "unknown", "folder"}) {
+            SyncJournalFileRecord record;
+            record._path = path;
+            record._inode = path == "unknown" ? 0 : 100 + records.size();
+            record._modtime = 123456789;
+            record._type = path == "folder" ? ItemTypeDirectory : ItemTypeFile;
+            record._etag = "etag-" + path;
+            record._fileId = "id-" + path;
+            record._fileSize = 123;
+            record._remotePerm = RemotePermissions::fromDbValue("RW");
+            record._checksumHeader = "MD5:checksum-" + path;
+            QVERIFY(journal.setFileRecord(record));
+            records.append(record);
+        }
+        journal.close();
+
+        {
+            SqlDatabase legacyDb;
+            QVERIFY(legacyDb.openOrCreateReadWrite(journal.databaseFilePath()));
+            SqlQuery query(legacyDb);
+            query.prepare("UPDATE metadata SET inode=NULL WHERE path='unknown';");
+            QVERIFY(query.exec());
+            if (hasUniqueInodeIndex) {
+                query.prepare("CREATE UNIQUE INDEX metadata_unique_inode ON metadata(inode);");
+                QVERIFY(query.exec());
+            }
+        }
+
+        for (auto openCount = 0; openCount < 2; ++openCount) {
+            QVERIFY(journal.checkConnect());
+            {
+                SqlQuery query(journal._db);
+                query.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='metadata_unique_inode';");
+                QVERIFY(query.exec());
+                QVERIFY(query.next().hasData);
+                QCOMPARE(query.intValue(0), 0);
+            }
+
+            if (openCount == 0) {
+                for (const auto &path : QByteArrayList{"duplicate1", "duplicate2", "zero1", "zero2"}) {
+                    auto record = records.first();
+                    record._path = path;
+                    record._inode = path.startsWith("zero") ? 0 : records.first()._inode;
+                    QVERIFY(journal.setFileRecord(record));
+                    if (path == "duplicate1") {
+                        record._inode = 0;
+                    }
+                    QVERIFY(journal.updateLocalMetadata(record.path(), record._modtime, record._fileSize, record._inode, {}));
+                    records.append(record);
+                }
+            }
+
+            QCOMPARE(journal.getFileRecordCount(), records.size());
+            for (const auto &expected : records) {
+                SyncJournalFileRecord actual;
+                QVERIFY(journal.getFileRecord(expected._path, &actual));
+                QVERIFY2(actual == expected, expected._path.constData());
+            }
+            journal.close();
+        }
     }
 
     void testFileRecordChecksum()
@@ -263,11 +340,9 @@ private Q_SLOTS:
         auto invalidEtag = QByteArray("_invalid_");
         auto initialEtag = QByteArray("etag");
         auto makeEntry = [&](const QByteArray &path, ItemType type) {
-            static int lastInode = 0;
             SyncJournalFileRecord record;
             record._modtime = QDateTime::currentSecsSinceEpoch();
             record._path = path;
-            record._inode = ++lastInode;
             record._type = type;
             record._etag = initialEtag;
             record._remotePerm = RemotePermissions::fromDbValue("RW");
@@ -330,33 +405,30 @@ private Q_SLOTS:
     void testRecursiveDelete()
     {
         auto makeEntry = [&](const QByteArray &path) {
-            static int lastInode = 0;
             SyncJournalFileRecord record;
             record._path = path;
-            record._inode = ++lastInode;
             record._remotePerm = RemotePermissions::fromDbValue("RW");
             record._modtime = QDateTime::currentSecsSinceEpoch();
             QVERIFY(_db.setFileRecord(record));
         };
 
         QByteArrayList elements;
-        elements
-            << "foo"
-            << "foo/file"
-            << "bar"
-            << "moo"
-            << "moo/file"
-            << "foo%bar"
-            << "foo bla bar/file"
-            << "fo_"
-            << "fo_/file";
-        for (const auto& elem : std::as_const(elements)) {
+        elements << "foo"
+                 << "foo/file"
+                 << "bar"
+                 << "moo"
+                 << "moo/file"
+                 << "foo%bar"
+                 << "foo bla bar/file"
+                 << "fo_"
+                 << "fo_/file";
+        for (const auto &elem : std::as_const(elements)) {
             makeEntry(elem);
         }
 
         auto checkElements = [&]() {
             bool ok = true;
-            for (const auto& elem : std::as_const(elements)) {
+            for (const auto &elem : std::as_const(elements)) {
                 SyncJournalFileRecord record;
                 if (!_db.getFileRecord(elem, &record) || !record.isValid()) {
                     qWarning() << "Missing record: " << elem;
@@ -518,10 +590,8 @@ private Q_SLOTS:
     {
         QList<qint64> allFileIds = {};
         const auto makeEntry = [this, &allFileIds](const qint64 &fileId) -> void {
-            static int lastInode = 0;
             SyncJournalFileRecord record;
             record._fileId = u"%1oc123xyz987e"_s.arg(fileId, 8, 10, '0'_L1).toLocal8Bit();
-            record._inode = ++lastInode;
             record._modtime = QDateTime::currentSecsSinceEpoch();
             record._path = u"item%1"_s.arg(fileId).toLocal8Bit();
             record._type = ItemTypeFile;
@@ -571,7 +641,7 @@ private Q_SLOTS:
         QVERIFY(_db.hasFileIds({037})); // octal
         QVERIFY(!_db.hasFileIds({37})); // decimal
 
-        QVERIFY(!_db.hasFileIds({33}));    // 33 does not exist...
+        QVERIFY(!_db.hasFileIds({33})); // 33 does not exist...
         QVERIFY(_db.hasFileIds({33, 25})); // ...but 25 does
 
         // nothing doesn't exist

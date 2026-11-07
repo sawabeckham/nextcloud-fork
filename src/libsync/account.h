@@ -19,18 +19,18 @@
 #include "updatechannel.h"
 
 #include <QByteArray>
-#include <QUrl>
+#include <QHttpMultiPart>
 #include <QNetworkCookie>
 #include <QNetworkProxy>
 #include <QNetworkRequest>
-#include <QSslSocket>
-#include <QSslCertificate>
-#include <QSslConfiguration>
-#include <QSslCipher>
-#include <QSslError>
 #include <QSharedPointer>
-#include <QHttpMultiPart>
+#include <QSslCertificate>
+#include <QSslCipher>
+#include <QSslConfiguration>
+#include <QSslError>
+#include <QSslSocket>
 #include <QTimer>
+#include <QUrl>
 #include <QUuid>
 
 #ifndef TOKEN_AUTH_ONLY
@@ -44,13 +44,15 @@ class QNetworkReply;
 class QUrl;
 class QNetworkAccessManager;
 
-namespace QKeychain {
+namespace QKeychain
+{
 class Job;
 class WritePasswordJob;
 class ReadPasswordJob;
 }
 
-namespace OCC {
+namespace OCC
+{
 
 class AbstractCredentials;
 class AccessManager;
@@ -95,19 +97,22 @@ class OWNCLOUDSYNC_EXPORT Account : public QObject
     Q_PROPERTY(QString proxyUser READ proxyUser WRITE setProxyUser NOTIFY proxyUserChanged)
     Q_PROPERTY(QString proxyPassword READ proxyPassword WRITE setProxyPassword NOTIFY proxyPasswordChanged)
     Q_PROPERTY(AccountNetworkTransferLimitSetting uploadLimitSetting READ uploadLimitSetting WRITE setUploadLimitSetting NOTIFY uploadLimitSettingChanged)
-    Q_PROPERTY(AccountNetworkTransferLimitSetting downloadLimitSetting READ downloadLimitSetting WRITE setDownloadLimitSetting NOTIFY downloadLimitSettingChanged)
+    Q_PROPERTY(
+        AccountNetworkTransferLimitSetting downloadLimitSetting READ downloadLimitSetting WRITE setDownloadLimitSetting NOTIFY downloadLimitSettingChanged)
     Q_PROPERTY(unsigned int uploadLimit READ uploadLimit WRITE setUploadLimit NOTIFY uploadLimitChanged)
     Q_PROPERTY(unsigned int downloadLimit READ downloadLimit WRITE setDownloadLimit NOTIFY downloadLimitChanged)
     Q_PROPERTY(bool enforceUseHardwareTokenEncryption READ enforceUseHardwareTokenEncryption NOTIFY enforceUseHardwareTokenEncryptionChanged)
     Q_PROPERTY(QString encryptionHardwareTokenDriverPath READ encryptionHardwareTokenDriverPath NOTIFY encryptionHardwareTokenDriverPathChanged)
-    Q_PROPERTY(QByteArray encryptionCertificateFingerprint READ encryptionCertificateFingerprint WRITE setEncryptionCertificateFingerprint NOTIFY encryptionCertificateFingerprintChanged)
+    Q_PROPERTY(QByteArray encryptionCertificateFingerprint READ encryptionCertificateFingerprint WRITE setEncryptionCertificateFingerprint NOTIFY
+                   encryptionCertificateFingerprintChanged)
 #ifdef BUILD_FILE_PROVIDER_MODULE
     Q_PROPERTY(QString fileProviderDomainIdentifier READ fileProviderDomainIdentifier WRITE setFileProviderDomainIdentifier)
 #endif
 
 public:
     enum class AccountNetworkTransferLimitSetting {
-        LegacyGlobalLimit = -2, // Until 3.17.0 a value of -2 was interpreted as "Use global network settings", it's now used to fall back to "No limit".  See also GH#8743
+        LegacyGlobalLimit =
+            -2, // Until 3.17.0 a value of -2 was interpreted as "Use global network settings", it's now used to fall back to "No limit".  See also GH#8743
         AutoLimit = -1, // Deprecated: auto limit removed, treated as "No limit" for migration
         NoLimit,
         ManualLimit,
@@ -170,7 +175,10 @@ public:
 
     /** Server url of the account */
     void setUrl(const QUrl &url);
-    [[nodiscard]] QUrl url() const { return _url; }
+    [[nodiscard]] QUrl url() const
+    {
+        return _url;
+    }
     [[nodiscard]] QUrl publicShareLinkUrl() const;
 
     [[nodiscard]] bool isPublicShareLink() const
@@ -198,12 +206,10 @@ public:
     /** Returns webdav entry URL, based on url() */
     [[nodiscard]] QUrl davUrl() const;
 
-    /** Returns the legacy permalink url for a file.
-     *
-     * This uses the old way of manually building the url. New code should
-     * use the "privatelink" property accessible via PROPFIND.
+    /** @brief Builds an internal link using the Global Scale token when available.
+     * @returns An empty URL when the numeric file ID is empty.
      */
-    [[nodiscard]] QUrl deprecatedPrivateLinkUrl(const QByteArray &numericFileId) const;
+    [[nodiscard]] QUrl internalLinkUrl(const QByteArray &numericFileId) const;
 
     /** Holds the accounts credentials */
     [[nodiscard]] AbstractCredentials *credentials() const;
@@ -215,42 +221,35 @@ public:
      * this function. Other places should prefer to use jobs or
      * sendRequest().
      */
-    QNetworkReply *sendRawRequest(const QByteArray &verb,
-                                  const QUrl &url,
-                                  QNetworkRequest req = QNetworkRequest(),
-                                  QIODevice *data = nullptr);
+    QNetworkReply *sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req = QNetworkRequest(), QIODevice *data = nullptr);
 
-    QNetworkReply *sendRawRequest(const QByteArray &verb,
-                                  const QUrl &url,
-                                  QNetworkRequest req,
-                                  const QByteArray &data);
+    QNetworkReply *sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, const QByteArray &data);
 
-    QNetworkReply *sendRawRequest(const QByteArray &verb,
-                                  const QUrl &url,
-                                  QNetworkRequest req,
-                                  QHttpMultiPart *data);
+    QNetworkReply *sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QHttpMultiPart *data);
 
     /** Create and start network job for a simple one-off request.
      *
      * More complicated requests typically create their own job types.
      */
-    SimpleNetworkJob *sendRequest(const QByteArray &verb,
-        const QUrl &url,
-        QNetworkRequest req = QNetworkRequest(),
-        QIODevice *data = nullptr);
+    SimpleNetworkJob *sendRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req = QNetworkRequest(), QIODevice *data = nullptr);
 
     /** The ssl configuration during the first connection */
     QSslConfiguration getOrCreateSslConfig();
-    [[nodiscard]] QSslConfiguration sslConfiguration() const { return _sslConfiguration; }
+    [[nodiscard]] QSslConfiguration sslConfiguration() const
+    {
+        return _sslConfiguration;
+    }
     void setSslConfiguration(const QSslConfiguration &config);
     // Because of bugs in Qt, we use this to store info needed for the SSL Button
     QSslCipher _sessionCipher;
     QByteArray _sessionTicket;
     QList<QSslCertificate> _peerCertificateChain;
 
-
     /** The certificates of the account */
-    [[nodiscard]] QList<QSslCertificate> approvedCerts() const { return _approvedCerts; }
+    [[nodiscard]] QList<QSslCertificate> approvedCerts() const
+    {
+        return _approvedCerts;
+    }
     void setApprovedCerts(const QList<QSslCertificate> certs);
     void addApprovedCerts(const QList<QSslCertificate> certs);
 
@@ -294,7 +293,8 @@ public:
 
     [[nodiscard]] bool serverHasMountRootProperty() const;
 
-    static constexpr int makeServerVersion(const int majorVersion, const int minorVersion, const int patchVersion) {
+    static constexpr int makeServerVersion(const int majorVersion, const int minorVersion, const int patchVersion)
+    {
         return (majorVersion << 16) + (minorVersion << 8) + patchVersion;
     };
 
@@ -323,8 +323,14 @@ public:
     [[nodiscard]] bool bulkUploadNeedsLegacyChecksumHeader() const;
 
     /** True when the server connection is using HTTP2  */
-    bool isHttp2Supported() { return _http2Supported; }
-    void setHttp2Supported(bool value) { _http2Supported = value; }
+    bool isHttp2Supported()
+    {
+        return _http2Supported;
+    }
+    void setHttp2Supported(bool value)
+    {
+        _http2Supported = value;
+    }
 
     void clearCookieJar();
     void lendCookieJarTo(QNetworkAccessManager *guest);
@@ -337,7 +343,7 @@ public:
     /// Called by network jobs on credential errors, emits invalidCredentials()
     void handleInvalidCredentials();
 
-    ClientSideEncryption* e2e();
+    ClientSideEncryption *e2e();
 
     /// Used in RemoteWipe
     void retrieveAppPassword();
@@ -363,15 +369,15 @@ public:
 
     void setLockFileState(const QString &serverRelativePath,
                           const QString &remoteSyncPathWithTrailingSlash,
-                          const QString &localSyncPath, const QString &etag,
-                          SyncJournalDb * const journal,
+                          const QString &localSyncPath,
+                          const QString &etag,
+                          SyncJournalDb *const journal,
                           const SyncFileItem::LockStatus lockStatus,
                           const SyncFileItem::LockOwnerType lockOwnerType);
 
-    SyncFileItem::LockStatus fileLockStatus(SyncJournalDb * const journal,
-                                            const QString &folderRelativePath) const;
+    SyncFileItem::LockStatus fileLockStatus(SyncJournalDb *const journal, const QString &folderRelativePath) const;
 
-    bool fileCanBeUnlocked(SyncJournalDb * const journal, const QString &folderRelativePath) const;
+    bool fileCanBeUnlocked(SyncJournalDb *const journal, const QString &folderRelativePath) const;
 
     void setTrustCertificates(bool trustCertificates);
     [[nodiscard]] bool trustCertificates() const;
@@ -520,7 +526,7 @@ Q_SIGNALS:
     void capabilitiesChanged();
 
     void lockFileSuccess();
-    void lockFileError(const QString&);
+    void lockFileError(const QString &);
 
     void networkProxySettingChanged();
     void proxyTypeChanged();
@@ -659,12 +665,19 @@ private:
      *       Being able to specify a new certificate is important anyway: expiry etc.
      *
      *       We introduce this dirty hack here, to allow deleting them upon Remote Wipe.
-    */
-    public:
-        void setRemoteWipeRequested_HACK() { _isRemoteWipeRequested_HACK = true; }
-        bool isRemoteWipeRequested_HACK() { return _isRemoteWipeRequested_HACK; }
-    private:
-        bool _isRemoteWipeRequested_HACK = false;
+     */
+public:
+    void setRemoteWipeRequested_HACK()
+    {
+        _isRemoteWipeRequested_HACK = true;
+    }
+    bool isRemoteWipeRequested_HACK()
+    {
+        return _isRemoteWipeRequested_HACK;
+    }
+
+private:
+    bool _isRemoteWipeRequested_HACK = false;
     // <-- FIXME MS@2019-12-07
 };
 }
@@ -672,4 +685,4 @@ private:
 Q_DECLARE_METATYPE(OCC::AccountPtr)
 Q_DECLARE_METATYPE(OCC::Account *)
 
-#endif //SERVERCONNECTION_H
+#endif // SERVERCONNECTION_H

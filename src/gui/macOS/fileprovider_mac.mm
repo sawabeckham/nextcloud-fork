@@ -10,27 +10,31 @@
 #include <QOperatingSystemVersion>
 #include <QThread>
 
-#include "libsync/configfile.h"
 #include "gui/macOS/fileproviderxpc.h"
+#include "libsync/configfile.h"
 
 #import <Foundation/Foundation.h>
 
 static_assert(__has_feature(objc_arc), "fileprovider_mac requires ARC.");
 
-namespace OCC {
+namespace OCC
+{
 
 Q_LOGGING_CATEGORY(lcMacFileProvider, "nextcloud.gui.macfileprovider", QtInfoMsg)
 
-namespace Mac {
+namespace Mac
+{
 
-FileProvider* FileProvider::_instance = nullptr;
+FileProvider *FileProvider::_instance = nullptr;
 
-FileProvider::FileProvider(QObject * const parent)
+FileProvider::FileProvider(QObject *const parent)
     : QObject(parent)
 {
     Q_ASSERT(!_instance);
     qCDebug(lcMacFileProvider) << "Initializing...";
 
+    // Keep the XPC interface available while domain discovery or migration is pending.
+    _xpc = std::make_unique<FileProviderXPC>();
     _domainManager = std::make_unique<FileProviderDomainManager>(this);
 
     if (_domainManager) {

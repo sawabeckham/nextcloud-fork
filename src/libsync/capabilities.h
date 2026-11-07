@@ -9,12 +9,13 @@
 
 #include "owncloudlib.h"
 
-#include <QVariantMap>
-#include <QStringList>
-#include <QMimeDatabase>
 #include <QColor>
+#include <QMimeDatabase>
+#include <QStringList>
+#include <QVariantMap>
 
-namespace OCC {
+namespace OCC
+{
 
 class DirectEditor;
 struct ServerManagedSettings;
@@ -23,7 +24,7 @@ enum PushNotificationType {
     None = 0,
     Files = 1,
     Activities = 2,
-    Notifications = 4
+    Notifications = 4,
 };
 Q_DECLARE_FLAGS(PushNotificationTypes, PushNotificationType)
 Q_DECLARE_OPERATORS_FOR_FLAGS(PushNotificationTypes)
@@ -74,8 +75,8 @@ public:
     /// disable parallel upload in chunking
     [[nodiscard]] bool chunkingParallelUploadDisabled() const;
 
-    /// Whether the "privatelink" DAV property is available
-    [[nodiscard]] bool privateLinkPropertyAvailable() const;
+    /// Returns the Global Scale instance token, or an empty string when unavailable.
+    [[nodiscard]] QString globalScaleToken() const;
 
     /// returns true if the capabilities report notifications
     [[nodiscard]] bool notificationsAvailable() const;
@@ -178,9 +179,9 @@ public:
     [[nodiscard]] QList<QVariantMap> fileActionsByMimeType(const QMimeType &fileMimeType) const;
 
     // Direct Editing
-    void addDirectEditor(DirectEditor* directEditor);
-    DirectEditor* getDirectEditorForMimetype(const QMimeType &mimeType);
-    DirectEditor* getDirectEditorForOptionalMimetype(const QMimeType &mimeType);
+    void addDirectEditor(DirectEditor *directEditor);
+    DirectEditor *getDirectEditorForMimetype(const QMimeType &mimeType);
+    DirectEditor *getDirectEditorForOptionalMimetype(const QMimeType &mimeType);
 
     [[nodiscard]] bool governanceAvailable() const;
 
@@ -188,7 +189,7 @@ private:
     [[nodiscard]] QMap<QString, QVariant> serverThemingMap() const;
 
     QVariantMap _capabilities;
-    QList<DirectEditor*> _directEditors;
+    QList<DirectEditor *> _directEditors;
 };
 
 /*-------------------------------------------------------------------------------------*/
@@ -197,7 +198,7 @@ class OWNCLOUDSYNC_EXPORT DirectEditor : public QObject
 {
     Q_OBJECT
 public:
-    DirectEditor(const QString &id, const QString &name, QObject* parent = nullptr);
+    DirectEditor(const QString &id, const QString &name, QObject *parent = nullptr);
 
     void addMimetype(const QByteArray &mimeType);
     void addOptionalMimetype(const QByteArray &mimeType);
@@ -223,4 +224,4 @@ private:
 
 }
 
-#endif //CAPABILITIES_H
+#endif // CAPABILITIES_H

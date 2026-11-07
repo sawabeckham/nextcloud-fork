@@ -11,10 +11,10 @@
 
 #include "syncresult.h"
 
+#include <QGuiApplication>
 #include <QIcon>
 #include <QObject>
 #include <QPalette>
-#include <QGuiApplication>
 
 class QString;
 class QObject;
@@ -22,7 +22,8 @@ class QPixmap;
 class QColor;
 class QPaintDevice;
 
-namespace OCC {
+namespace OCC
+{
 
 class SyncResult;
 
@@ -71,7 +72,7 @@ public:
         oCSetupTop, // ownCloud connect page
         oCSetupSide,
         oCSetupBottom,
-        oCSetupResultTop // ownCloud connect result page
+        oCSetupResultTop, // ownCloud connect result page
     };
 
     /* returns a singleton instance. */
@@ -131,31 +132,31 @@ public:
      * @return QUrl full path to an icon
      */
     [[nodiscard]] QUrl stateOfflineImageSource() const;
-    
+
     /**
      * @brief Returns full path to an online user status icon
      * @return QUrl full path to an icon
      */
     [[nodiscard]] QUrl statusOnlineImageSource() const;
-    
+
     /**
      * @brief Returns full path to an do not disturb user status icon
      * @return QUrl full path to an icon
      */
     [[nodiscard]] QUrl statusDoNotDisturbImageSource() const;
-    
+
     /**
      * @brief Returns full path to an away user status icon
      * @return QUrl full path to an icon
      */
     [[nodiscard]] QUrl statusAwayImageSource() const;
-    
+
     /**
      * @brief Returns full path to a busy user status icon
      * @return QUrl full path to an icon
      */
     [[nodiscard]] QUrl statusBusyImageSource() const;
-    
+
     /**
      * @brief Returns full path to an invisible user status icon
      * @return QUrl full path to an icon
@@ -204,8 +205,8 @@ public:
     static bool isHidpi(QPaintDevice *dev = nullptr);
 
     /**
-      * get an sync state icon
-      */
+     * get an sync state icon
+     */
     [[nodiscard]] QIcon syncStateIcon(SyncResult::Status, bool sysTray = false) const;
     [[nodiscard]] QIcon folderStateIcon(SyncResult::Status) const;
     [[nodiscard]] QIcon folderOfflineIcon(bool sysTray = false) const;
@@ -227,15 +228,15 @@ public:
     [[nodiscard]] bool multiAccount() const;
 
     /**
-    * URL to documentation.
-    *
-    * This is opened in the browser when the "Help" action is selected from the tray menu.
-    *
-    * If the function is overridden to return an empty string the action is removed from
-    * the menu.
-    *
-    * Defaults to Nextclouds client documentation website.
-    */
+     * URL to documentation.
+     *
+     * This is opened in the browser when the "Help" action is selected from the tray menu.
+     *
+     * If the function is overridden to return an empty string the action is removed from
+     * the menu.
+     *
+     * Defaults to Nextclouds client documentation website.
+     */
     [[nodiscard]] QString helpUrl() const;
 
     /**
@@ -281,7 +282,7 @@ public:
      * When true, the browser will get opened automatically
      */
     [[nodiscard]] bool startLoginFlowAutomatically() const;
-    
+
     /**
      * Enable OCSP stapling for SSL handshakes
      *
@@ -326,7 +327,10 @@ public:
     /**
      * Override to encforce a particular locale, i.e. "de" or "pt_BR"
      */
-    [[nodiscard]] QString enforcedLocale() const { return QString(); }
+    [[nodiscard]] QString enforcedLocale() const
+    {
+        return QString();
+    }
 
     /** colored, white or black */
     [[nodiscard]] QString systrayIconFlavor(bool mono) const;
@@ -401,8 +405,9 @@ public:
     [[nodiscard]] QString updateCheckUrl() const;
 
     /**
-     * When true, the setup wizard will show the selective sync dialog by default and default
-     * to nothing selected
+     * @brief Whether the setup wizard shows the selective sync dialog with no folders selected.
+     *
+     * The value is read from the wizardSelectiveSyncDefaultNothing configuration parameter.
      */
     [[nodiscard]] bool wizardSelectiveSyncDefaultNothing() const;
 
@@ -451,9 +456,11 @@ public:
      * @value UserIDEmail Wizard asks for an email as ID
      * @value UserIDCustom Specify string in \ref customUserID
      */
-    enum UserIDType { UserIDUserName = 0,
+    enum UserIDType {
+        UserIDUserName = 0,
         UserIDEmail,
-        UserIDCustom };
+        UserIDCustom,
+    };
 
     /** @brief What to display as the userID (e.g. in the wizards)
      *
@@ -504,13 +511,13 @@ public:
      * important dependency versions.
      */
     [[nodiscard]] QString versionSwitchOutput() const;
-	
-	/**
-    * @brief Request suitable QIcon resource depending on the background colour of the parent widget.
-    *
-    * This should be replaced (TODO) by a real theming implementation for the client UI 
-    * (actually 2019/09/13 only systray theming).
-    */
+
+    /**
+     * @brief Request suitable QIcon resource depending on the background colour of the parent widget.
+     *
+     * This should be replaced (TODO) by a real theming implementation for the client UI
+     * (actually 2019/09/13 only systray theming).
+     */
     [[nodiscard]] QIcon uiThemeIcon(const QString &iconName, bool uiHasDarkBg) const;
 
     Q_INVOKABLE static double getColorDarkness(const QColor &color);
@@ -540,7 +547,7 @@ public:
      * 2019/12/08: Implemented for the Dark Mode on macOS, because the app palette can not account for that (Qt 5.12.5).
      */
     static QColor getBackgroundAwareLinkColor(const QColor &backgroundColor);
-    
+
     /**
      * @brief Return the colour to be used for HTML links (e.g. used in QLabel), based on the current app palette (Dark-/Light-Mode switching).
      *
@@ -551,7 +558,8 @@ public:
     static QColor getBackgroundAwareLinkColor();
 
     /**
-     * @brief Appends a CSS-style colour value to all HTML link tags in a given string, based on the current app palette or given colour (Dark-/Light-Mode switching).
+     * @brief Appends a CSS-style colour value to all HTML link tags in a given string, based on the current app palette or given colour (Dark-/Light-Mode
+     * switching).
      *
      * 2019/12/08: Implemented for the Dark Mode on macOS, because the app palette can not account for that (Qt 5.12.5).
      *

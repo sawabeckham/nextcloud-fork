@@ -7,10 +7,10 @@
 #ifndef SOCKETAPI_H
 #define SOCKETAPI_H
 
+#include "accountfwd.h"
 #include "common/syncfilestatus.h"
 #include "common/syncjournalfilerecord.h"
 #include "syncfileitem.h"
-#include "accountfwd.h"
 
 #include "config.h"
 
@@ -29,8 +29,9 @@ class DirectEditor;
 class SocketApiJob;
 class SocketApiJobV2;
 
-namespace Mac {
-    class FinderSyncService;
+namespace Mac
+{
+class FinderSyncService;
 }
 
 Q_DECLARE_LOGGING_CATEGORY(lcSocketApi)
@@ -51,12 +52,12 @@ class SocketApi : public QObject
 
     enum SharingContextItemEncryptedFlag {
         EncryptedItem,
-        NotEncryptedItem
+        NotEncryptedItem,
     };
 
     enum SharingContextItemRootEncryptedFolderFlag {
         RootEncryptedFolder,
-        NonRootEncryptedFolder
+        NonRootEncryptedFolder,
     };
 
     // Allow FinderSyncService to access FileData for XPC communication
@@ -98,8 +99,7 @@ private:
     // Helper structure for getting information on a file
     // based on its local path - used for nearly all remote
     // actions.
-    struct FileData
-    {
+    struct FileData {
         static FileData get(const QString &localFile);
         [[nodiscard]] SyncFileStatus syncFileStatus() const;
         [[nodiscard]] SyncJournalFileRecord journalRecord() const;
@@ -156,29 +156,30 @@ private:
 
     void setFileLock(const QString &localFile, const SyncFileItem::LockStatus lockState) const;
 
-    // Fetch the private link and call targetFun
-    void fetchPrivateLinkUrlHelper(const QString &localFile, const std::function<void(const QString &url)> &targetFun);
+    // Build the internal link and call targetFun.
+    void internalLinkUrlHelper(const QString &localFile, void (*targetFun)(const QString &url)) const;
 
     /** Sends translated/branded strings that may be useful to the integration */
     Q_INVOKABLE void command_GET_STRINGS(const QString &argument, OCC::SocketListener *listener);
 
     // Sends the context menu options relating to sharing to listener
-    void sendSharingContextMenuOptions(const FileData &fileData, SocketListener *listener, SharingContextItemEncryptedFlag itemEncryptionFlag, SharingContextItemRootEncryptedFolderFlag rootE2eeFolderFlag);
+    void sendSharingContextMenuOptions(const FileData &fileData,
+                                       SocketListener *listener,
+                                       SharingContextItemEncryptedFlag itemEncryptionFlag,
+                                       SharingContextItemRootEncryptedFolderFlag rootE2eeFolderFlag);
     void sendFileActionsContextMenuOptions(const FileData &fileData, SocketListener *listener);
     void sendEncryptFolderCommandMenuEntries(const QFileInfo &fileInfo,
                                              const FileData &fileData,
                                              const bool isE2eEncryptedPath,
-                                             const OCC::SocketListener* const listener) const;
+                                             const OCC::SocketListener *const listener) const;
 
-    void sendLockFileCommandMenuEntries(const QFileInfo &fileInfo,
-                                        Folder *const syncFolder,
-                                        const FileData &fileData,
-                                        const SocketListener *const listener) const;
+    void
+    sendLockFileCommandMenuEntries(const QFileInfo &fileInfo, Folder *const syncFolder, const FileData &fileData, const SocketListener *const listener) const;
 
     void sendLockFileInfoMenuEntries(const QFileInfo &fileInfo,
-                                     Folder* const syncFolder,
+                                     Folder *const syncFolder,
                                      const FileData &fileData,
-                                     const SocketListener* const listener,
+                                     const SocketListener *const listener,
                                      const SyncJournalFileRecord &record) const;
 
     void sendFilesGovernanceLabelsMenuOptions(const QFileInfo &fileInfo, const FileData &fileData, SocketListener *listener);
@@ -194,7 +195,7 @@ private:
 
     /// Direct Editing
     Q_INVOKABLE void command_EDIT(const QString &localFile, OCC::SocketListener *listener);
-    DirectEditor* getDirectEditorForLocalFile(const QString &localFile);
+    DirectEditor *getDirectEditorForLocalFile(const QString &localFile);
 
 #if GUI_TESTING
     Q_INVOKABLE void command_ASYNC_ASSERT_ICON_IS_EQUAL(const QSharedPointer<SocketApiJob> &job);

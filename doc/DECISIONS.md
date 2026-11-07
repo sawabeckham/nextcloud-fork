@@ -28,3 +28,8 @@ Finder получает имя существующего mapped domain с пр�
 ## 03.11.2026 — редактор имени Finder0.6.7
 
 Реальный screenshot выявил отличие macOS QFormLayout от ранее просмотренного offscreen fixture: поле не растягивалось, Save уходила на край отдельной строки. Заменена структура: label сверху, поле Expanding +Save справа в одном QHBoxLayout, help/reset под полем. Русские fork-only подписи выбираются по фактическому Application ui_lang; upstream translations/ по правилам не редактируется. Для прочих языков сохранён английский source tr fallback. Это ограниченный локальный fallback, не полноценный каталог локализации. Свойство ui_lang учитывает явный override пользователя; системную локаль напрямую не используем.
+
+
+## 07.11.2026 — полный master вместо выборочных backports
+
+Владелец выбрал перенос всего master после обзора FileProvider/GRDB изменений. Snapshotcc930c7c, baselinead4a85035.0.1; shallow Git не расширяется до многолетней истории, применяется воспроизводимый three-way source diff и сохраняется происхождение. AGENTS/Transifex — явные protected exclusions. Новые async/optional native contracts адаптируются к fork mutation fence: caller timeout не снимает native queue и не теряет account mapping/removal. Поэтому create/remove сохраняют ожидание callback; превращение всего account lifecycle в async остаётся самостоятельным этапом. Realm migration не испытывается на пользовательской базе: synthetic tests сначала, живой переход только после backup/owner installation. Это future35.1.0 alpha source, не stable35.0.3 и не обещание готового релиза.

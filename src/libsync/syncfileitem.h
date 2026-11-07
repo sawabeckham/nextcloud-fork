@@ -7,18 +7,19 @@
 #ifndef SYNCFILEITEM_H
 #define SYNCFILEITEM_H
 
-#include <QVector>
-#include <QString>
 #include <QDateTime>
 #include <QMetaType>
 #include <QSharedPointer>
+#include <QString>
+#include <QVector>
 
 #include <csync.h>
 
-#include "owncloudlib.h"
 #include "common/syncitemenums.h"
+#include "owncloudlib.h"
 
-namespace OCC {
+namespace OCC
+{
 
 class SyncFileItem;
 class SyncJournalFileRecord;
@@ -35,7 +36,7 @@ public:
     enum Direction {
         None = 0,
         Up,
-        Down
+        Down,
     };
     Q_ENUM(Direction)
 
@@ -122,8 +123,8 @@ public:
 
     /** Creates a basic SyncFileItem from remote properties
      */
-    [[nodiscard]] static SyncFileItemPtr fromProperties(const QString &filePath, const QMap<QString, QString> &properties, RemotePermissions::MountedPermissionAlgorithm algorithm);
-
+    [[nodiscard]] static SyncFileItemPtr
+    fromProperties(const QString &filePath, const QMap<QString, QString> &properties, RemotePermissions::MountedPermissionAlgorithm algorithm);
 
     SyncFileItem()
         : _type(ItemTypeSkip)
@@ -134,6 +135,7 @@ public:
         , _status(NoStatus)
         , _isRestoration(false)
         , _isSelectiveSync(false)
+        , _isUploadForbiddenItemKept(false)
     {
     }
 
@@ -203,10 +205,7 @@ public:
      */
     [[nodiscard]] bool hasErrorStatus() const
     {
-        return _status == SyncFileItem::SoftError
-            || _status == SyncFileItem::NormalError
-            || _status == SyncFileItem::FatalError
-            || !_errorString.isEmpty();
+        return _status == SyncFileItem::SoftError || _status == SyncFileItem::NormalError || _status == SyncFileItem::FatalError || !_errorString.isEmpty();
     }
 
     /**
@@ -227,7 +226,10 @@ public:
             && !(_instruction == CSYNC_INSTRUCTION_CONFLICT && _status == SyncFileItem::Success);
     }
 
-    [[nodiscard]] bool isEncrypted() const { return _e2eEncryptionStatus != EncryptionStatus::NotEncrypted; }
+    [[nodiscard]] bool isEncrypted() const
+    {
+        return _e2eEncryptionStatus != EncryptionStatus::NotEncrypted;
+    }
 
     void updateLockStateFromDbRecord(const SyncJournalFileRecord &dbRecord);
 
@@ -278,6 +280,7 @@ public:
     Status _status BITFIELD(4);
     bool _isRestoration BITFIELD(1); // The original operation was forbidden, and this is a restoration
     bool _isSelectiveSync BITFIELD(1); // The file is removed or ignored because it is in the selective sync list
+    bool _isUploadForbiddenItemKept BITFIELD(1); // The upload was ignored, and the local-only data was kept on disk (new item in a read-only folder)
     EncryptionStatus _e2eEncryptionStatus = EncryptionStatus::NotEncrypted; // The file is E2EE or the content of the directory should be E2EE
     EncryptionStatus _e2eEncryptionServerCapability = EncryptionStatus::NotEncrypted;
     EncryptionStatus _e2eEncryptionStatusRemote = EncryptionStatus::NotEncrypted;

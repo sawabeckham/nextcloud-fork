@@ -7,23 +7,24 @@
 #ifndef SYNCJOURNALDB_H
 #define SYNCJOURNALDB_H
 
-#include <QObject>
 #include <QDateTime>
 #include <QHash>
 #include <QMutex>
+#include <QObject>
 #include <QVariant>
 #include <functional>
 
-#include "common/utility.h"
 #include "common/ownsql.h"
-#include "common/preparedsqlquerymanager.h"
-#include "common/syncjournalfilerecord.h"
-#include "common/result.h"
 #include "common/pinstate.h"
+#include "common/preparedsqlquerymanager.h"
+#include "common/result.h"
+#include "common/syncjournalfilerecord.h"
+#include "common/utility.h"
 
 class TestSyncJournalDB;
 
-namespace OCC {
+namespace OCC
+{
 class SyncJournalFileRecord;
 
 /**
@@ -40,10 +41,7 @@ public:
     ~SyncJournalDb() override;
 
     /// Create a journal path for a specific configuration
-    static QString makeDbName(const QString &localPath,
-        const QUrl &remoteUrl,
-        const QString &remotePath,
-        const QString &user);
+    static QString makeDbName(const QString &localPath, const QUrl &remoteUrl, const QString &remotePath, const QString &user);
 
     /// Migrate a csync_journal to the new path, if necessary. Returns false on error
     static bool maybeMigrateDb(const QString &localPath, const QString &absoluteJournalPath);
@@ -52,13 +50,16 @@ public:
     static bool findPathInSelectiveSyncList(const QStringList &list, const QString &path);
 
     // To verify that the record could be found check with SyncJournalFileRecord::isValid()
-    [[nodiscard]] bool getFileRecord(const QString &filename, SyncJournalFileRecord *rec) { return getFileRecord(filename.toUtf8(), rec); }
+    [[nodiscard]] bool getFileRecord(const QString &filename, SyncJournalFileRecord *rec)
+    {
+        return getFileRecord(filename.toUtf8(), rec);
+    }
     [[nodiscard]] bool getFileRecord(const QByteArray &filename, SyncJournalFileRecord *rec);
     [[nodiscard]] bool getFileRecordByE2eMangledName(const QString &mangledName, SyncJournalFileRecord *rec);
     [[nodiscard]] bool getFileRecordByInode(quint64 inode, SyncJournalFileRecord *rec);
     [[nodiscard]] bool getFileRecordsByFileId(const QByteArray &fileId, const std::function<void(const SyncJournalFileRecord &)> &rowCallback);
-    [[nodiscard]] bool getFilesBelowPath(const QByteArray &path, const std::function<void(const SyncJournalFileRecord&)> &rowCallback);
-    [[nodiscard]] bool listFilesInPath(const QByteArray &path, const std::function<void(const SyncJournalFileRecord&)> &rowCallback);
+    [[nodiscard]] bool getFilesBelowPath(const QByteArray &path, const std::function<void(const SyncJournalFileRecord &)> &rowCallback);
+    [[nodiscard]] bool listFilesInPath(const QByteArray &path, const std::function<void(const SyncJournalFileRecord &)> &rowCallback);
     [[nodiscard]] Result<void, QString> setFileRecord(const SyncJournalFileRecord &record);
     [[nodiscard]] bool getRootE2eFolderRecord(const QString &remoteFolderPath, SyncJournalFileRecord *rec);
     [[nodiscard]] bool listAllE2eeFoldersWithEncryptionStatusLessThan(const int status, const std::function<void(const SyncJournalFileRecord &)> &rowCallback);
@@ -69,18 +70,13 @@ public:
     void keyValueStoreDelete(const QString &key);
 
     [[nodiscard]] bool deleteFileRecord(const QString &filename, bool recursively = false);
-    [[nodiscard]] bool updateFileRecordChecksum(
-        const QString &filename,
-        const QByteArray &contentChecksum,
-        const QByteArray &contentChecksumType);
-    [[nodiscard]] bool updateLocalMetadata(const QString &filename,
-        qint64 modtime, qint64 size, quint64 inode, const SyncJournalFileLockInfo &lockInfo);
+    [[nodiscard]] bool updateFileRecordChecksum(const QString &filename, const QByteArray &contentChecksum, const QByteArray &contentChecksumType);
+    [[nodiscard]] bool updateLocalMetadata(const QString &filename, qint64 modtime, qint64 size, quint64 inode, const SyncJournalFileLockInfo &lockInfo);
 
     [[nodiscard]] bool hasFileIds(const QList<qint64> &fileIds);
 
     /// Return value for hasHydratedOrDehydratedFiles()
-    struct HasHydratedDehydrated
-    {
+    struct HasHydratedDehydrated {
         bool hasHydrated = false;
         bool hasDehydrated = false;
     };
@@ -101,15 +97,13 @@ public:
     [[nodiscard]] int wipeErrorBlacklist();
     int errorBlackListEntryCount();
 
-    struct DownloadInfo
-    {
+    struct DownloadInfo {
         QString _tmpfile;
         QByteArray _etag;
         int _errorCount = 0;
         bool _valid = false;
     };
-    struct UploadInfo
-    {
+    struct UploadInfo {
         int _chunkUploadV1 = 0;
         uint _transferid = 0;
         qint64 _size = 0;
@@ -122,11 +116,13 @@ public:
          * (As opposed to a small file transfer which is stored in the db so we can detect the case
          * when the upload succeeded, but the connection was dropped before we got the answer)
          */
-        [[nodiscard]] bool isChunked() const { return _transferid != 0; }
+        [[nodiscard]] bool isChunked() const
+        {
+            return _transferid != 0;
+        }
     };
 
-    struct PollInfo
-    {
+    struct PollInfo {
         QString _file; // The relative path of a file
         QString _url; // the poll url. (This pollinfo is invalid if _url is empty)
         qint64 _modtime = 0LL; // The modtime of the file being uploaded
@@ -149,6 +145,11 @@ public:
     /// Delete flags table entries that have no metadata correspondent
     void deleteStaleFlagsEntries();
 
+    void avoidRenamesOnNextSync(const QString &path)
+    {
+        avoidRenamesOnNextSync(path.toUtf8());
+    }
+    void avoidRenamesOnNextSync(const QByteArray &path);
     void setPollInfo(const PollInfo &);
 
     QVector<PollInfo> getPollInfos();
@@ -193,7 +194,10 @@ public:
      * Any setFileRecord() call to affected directories before the next sync run will be
      * adjusted to retain the invalid etag via _etagStorageFilter.
      */
-    void schedulePathForRemoteDiscovery(const QString &fileName) { schedulePathForRemoteDiscovery(fileName.toUtf8()); }
+    void schedulePathForRemoteDiscovery(const QString &fileName)
+    {
+        schedulePathForRemoteDiscovery(fileName.toUtf8());
+    }
     void schedulePathForRemoteDiscovery(const QByteArray &fileName);
 
     /**
@@ -239,7 +243,6 @@ public:
      */
     void setDataFingerprint(const QByteArray &dataFingerprint);
     QByteArray dataFingerprint();
-
 
     // Conflict record functions
 
@@ -296,8 +299,7 @@ public:
      *
      * Use internalPinStates() to get at them.
      */
-    struct OCSYNC_EXPORT PinStateInterface
-    {
+    struct OCSYNC_EXPORT PinStateInterface {
         explicit PinStateInterface(SyncJournalDb *db)
             : _db(db)
         {
@@ -456,12 +458,8 @@ private:
     friend class ::TestSyncJournalDB;
 };
 
-bool OCSYNC_EXPORT
-operator==(const SyncJournalDb::DownloadInfo &lhs,
-    const SyncJournalDb::DownloadInfo &rhs);
-bool OCSYNC_EXPORT
-operator==(const SyncJournalDb::UploadInfo &lhs,
-    const SyncJournalDb::UploadInfo &rhs);
+bool OCSYNC_EXPORT operator==(const SyncJournalDb::DownloadInfo &lhs, const SyncJournalDb::DownloadInfo &rhs);
+bool OCSYNC_EXPORT operator==(const SyncJournalDb::UploadInfo &lhs, const SyncJournalDb::UploadInfo &rhs);
 
 } // namespace OCC
 #endif // SYNCJOURNALDB_H

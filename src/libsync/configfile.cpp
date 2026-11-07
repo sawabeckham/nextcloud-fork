@@ -25,8 +25,8 @@
 #include "version.h"
 
 #ifndef TOKEN_AUTH_ONLY
-#include <QWidget>
 #include <QHeaderView>
+#include <QWidget>
 #endif
 
 #include <QCoreApplication>
@@ -44,7 +44,8 @@
 #define DEFAULT_REMOTE_POLL_INTERVAL 30000
 #define DEFAULT_MAX_LOG_LINES 20000
 
-namespace {
+namespace
+{
 static constexpr char showMainDialogAsNormalWindowC[] = "showMainDialogAsNormalWindow";
 static constexpr char showConfigBackupWarningC[] = "showConfigBackupWarning";
 static constexpr char remotePollIntervalC[] = "remotePollInterval";
@@ -93,7 +94,8 @@ static constexpr char lastSelectedAccountC[] = "lastSelectedAccount";
 static constexpr int deleteFilesThresholdDefaultValue = 100;
 }
 
-namespace OCC {
+namespace OCC
+{
 
 namespace chrono = std::chrono;
 
@@ -125,8 +127,7 @@ std::vector<std::unique_ptr<SettingSource>> deviceSources()
 }
 }
 
-static chrono::milliseconds millisecondsValue(const QSettings &setting, const char *key,
-    chrono::milliseconds defaultValue)
+static chrono::milliseconds millisecondsValue(const QSettings &setting, const char *key, chrono::milliseconds defaultValue)
 {
     return chrono::milliseconds(setting.value(QLatin1String(key), qlonglong(defaultValue.count())).toLongLong());
 }
@@ -254,7 +255,7 @@ bool ConfigFile::showInExplorerNavigationPane() const
 #else
         false
 #endif
-        ;
+    ;
     QSettings settings(configFile(), QSettings::IniFormat);
     return settings.value(showInExplorerNavigationPaneC, defaultValue).toBool();
 }
@@ -366,19 +367,19 @@ QString ConfigFile::configPath() const
             _confDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
         } else {
             // On Windows, use AppDataLocation, that's where the roaming data is and where we should store the config file
-             auto newLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+            auto newLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 
-             // Check if this is the first time loading the new location
-             if (!QFileInfo(newLocation).isDir()) {
-                 // Migrate data to the new locations
-                 auto oldLocation = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+            // Check if this is the first time loading the new location
+            if (!QFileInfo(newLocation).isDir()) {
+                // Migrate data to the new locations
+                auto oldLocation = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
 
-                 // Only migrate if the old location exists.
-                 if (QFileInfo(oldLocation).isDir()) {
-                     QDir().mkpath(newLocation);
-                     copy_dir_recursive(oldLocation, newLocation);
-                 }
-             }
+                // Only migrate if the old location exists.
+                if (QFileInfo(oldLocation).isDir()) {
+                    QDir().mkpath(newLocation);
+                    copy_dir_recursive(oldLocation, newLocation);
+                }
+            }
             _confDir = newLocation;
         }
     }
@@ -395,9 +396,7 @@ QString ConfigFile::excludeFile(Scope scope) const
         return ConfigFile::excludeFileFromSystem();
     }
 
-    const auto excludeFilePath = scope == LegacyScope
-        ? Migration::discoveredLegacyConfigPath()
-        : configPath();
+    const auto excludeFilePath = scope == LegacyScope ? Migration::discoveredLegacyConfigPath() : configPath();
 
     // prefer sync-exclude.lst, but if it does not exist, check for exclude.lst
     QFileInfo exclFileInfo(excludeFilePath, syncExclFile);
@@ -443,14 +442,14 @@ QString ConfigFile::excludeFileFromSystem()
 #endif
 #ifdef Q_OS_MACOS
     // exec path is inside the bundle
-    fi.setFile(QCoreApplication::applicationDirPath(),
-        QLatin1String("../Resources/") + syncExclFile);
+    fi.setFile(QCoreApplication::applicationDirPath(), QLatin1String("../Resources/") + syncExclFile);
 #endif
 
     return fi.absoluteFilePath();
 }
 
-namespace {
+namespace
+{
 void removeUpdaterArtifact(const QString &path)
 {
     if (path.isEmpty() || !QFile::exists(path)) {
@@ -508,17 +507,13 @@ QString ConfigFile::backup(const QString &fileName) const
         versionString.prepend('_');
     }
 
-    QString backupFile =
-        QStringLiteral("%1.backup_%2%3")
-            .arg(baseFilePath)
-            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"))
-            .arg(versionString);
+    QString backupFile = QStringLiteral("%1.backup_%2%3").arg(baseFilePath).arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")).arg(versionString);
 
     // If this exact file already exists it's most likely that a backup was
     // already done. (two backup calls directly after each other, potentially
     // even with source alterations in between!)
     // QFile does not overwrite backupFile
-    if(!QFile::copy(baseFilePath, backupFile)) {
+    if (!QFile::copy(baseFilePath, backupFile)) {
         qCWarning(lcConfigFile) << "Failed to create a backup of the config file" << baseFilePath;
     }
 
@@ -771,7 +766,7 @@ int ConfigFile::updateSegment() const
     int segment = settings.value(QLatin1String(updateSegmentC), -1).toInt();
 
     // Invalid? (Unset at the very first launch)
-    if(segment < 0 || segment > 99) {
+    if (segment < 0 || segment > 99) {
         // Save valid segment value, normally has to be done only once.
         segment = Utility::rand() % 99;
         settings.setValue(QLatin1String(updateSegmentC), segment);
@@ -808,8 +803,7 @@ QString ConfigFile::defaultUpdateChannel() const
     const QString defaultChannel = UpdateChannel::defaultUpdateChannel().toString();
 
     if (isBranded) {
-        qCInfo(lcConfigFile()) << "Default update channel is" << defaultChannel
-                               << "because branded clients only support the default channel.";
+        qCInfo(lcConfigFile()) << "Default update channel is" << defaultChannel << "because branded clients only support the default channel.";
         return defaultChannel;
     }
 
@@ -820,8 +814,7 @@ QString ConfigFile::defaultUpdateChannel() const
     if (hasSubscription && hasServerChannel) {
         const auto serverChannel = desktopEnterpriseChannel();
         if (validChannels.contains(serverChannel)) {
-            qCInfo(lcConfigFile()) << "Default update channel is" << serverChannel
-                                   << "because it was provided by the server.";
+            qCInfo(lcConfigFile()) << "Default update channel is" << serverChannel << "because it was provided by the server.";
             return serverChannel;
         }
         qCInfo(lcConfigFile()) << "Ignoring invalid server-provided update channel" << serverChannel;
@@ -833,8 +826,7 @@ QString ConfigFile::defaultUpdateChannel() const
 
     const auto versionSuffix = Theme::instance()->versionSuffix();
     if (validChannels.contains(versionSuffix)) {
-        qCInfo(lcConfigFile()) << "Default update channel is" << versionSuffix
-                               << "because of the current client build.";
+        qCInfo(lcConfigFile()) << "Default update channel is" << versionSuffix << "because of the current client build.";
         return versionSuffix;
     }
 
@@ -854,8 +846,7 @@ QString ConfigFile::currentUpdateChannel() const
     const QStringList validChannels = validUpdateChannels();
     QSettings settings(configFile(), QSettings::IniFormat);
 
-    auto currentChannel = UpdateChannel::fromString(
-        settings.value(QLatin1String(updateChannelC), defaultUpdateChannel()).toString());
+    auto currentChannel = UpdateChannel::fromString(settings.value(QLatin1String(updateChannelC), defaultUpdateChannel()).toString());
 
     if (!validChannels.contains(currentChannel.toString())) {
         currentChannel = UpdateChannel::fromString(defaultUpdateChannel());
@@ -876,9 +867,7 @@ QString ConfigFile::currentUpdateChannel() const
 void ConfigFile::setUpdateChannel(const QString &channel)
 {
     if (!validUpdateChannels().contains(channel)) {
-        qCWarning(lcConfigFile()) << "Received invalid update channel:"
-                                  << channel
-                                  << "can only accept" << validUpdateChannels() << ". Ignoring.";
+        qCWarning(lcConfigFile()) << "Received invalid update channel:" << channel << "can only accept" << validUpdateChannels() << ". Ignoring.";
         return;
     }
 
@@ -953,11 +942,7 @@ void ConfigFile::setVfsEnabled(bool enabled)
     settings.setValue({isVfsEnabledC}, enabled);
 }
 
-void ConfigFile::setProxyType(int proxyType,
-    const QString &host,
-    int port, bool needsAuth,
-    const QString &user,
-    const QString &pass)
+void ConfigFile::setProxyType(int proxyType, const QString &host, int port, bool needsAuth, const QString &user, const QString &pass)
 {
     QSettings settings(configFile(), QSettings::IniFormat);
 
@@ -988,8 +973,7 @@ void ConfigFile::setProxyType(int proxyType,
     settings.sync();
 }
 
-QVariant ConfigFile::getValue(const QString &param, const QString &group,
-    const QVariant &defaultValue) const
+QVariant ConfigFile::getValue(const QString &param, const QString &group, const QVariant &defaultValue) const
 {
     QVariant systemSetting;
     const auto appName = Migration::isUnbrandedToBrandedMigration() ? unbrandedAppName : Theme::instance()->appNameGUI();
@@ -1006,8 +990,7 @@ QVariant ConfigFile::getValue(const QString &param, const QString &group,
         }
         systemSetting = systemSettings.value(param, defaultValue);
     } else { // Windows
-        QSettings systemSettings(QString::fromLatin1(R"(HKEY_LOCAL_MACHINE\Software\%1\%2)").arg(APPLICATION_VENDOR, appName),
-            QSettings::NativeFormat);
+        QSettings systemSettings(QString::fromLatin1(R"(HKEY_LOCAL_MACHINE\Software\%1\%2)").arg(APPLICATION_VENDOR, appName), QSettings::NativeFormat);
         if (!group.isEmpty()) {
             systemSettings.beginGroup(group);
         }
@@ -1194,6 +1177,11 @@ void ConfigFile::setNewBigFolderSizeLimit(bool isChecked, qint64 mbytes)
     setConfig(QLatin1String(useNewBigFolderSizeLimitC), isChecked);
 }
 
+bool ConfigFile::wizardSelectiveSyncDefaultNothing() const
+{
+    return getConfig<bool>(QLatin1String(wizardSelectiveSyncDefaultNothingC));
+}
+
 bool ConfigFile::confirmExternalStorage() const
 {
     return getConfig<bool>(QLatin1String(confirmExternalStorageC));
@@ -1239,7 +1227,8 @@ void ConfigFile::setMoveToTrash(bool isChecked)
     setValue(moveToTrashC, isChecked);
 }
 
-bool ConfigFile::showMainDialogAsNormalWindow() const {
+bool ConfigFile::showMainDialogAsNormalWindow() const
+{
     return getValue(showMainDialogAsNormalWindowC, {}, false).toBool();
 }
 
@@ -1462,7 +1451,7 @@ QString ConfigFile::language() const
     return settings.value(QLatin1String(languageC), QLatin1String("")).toString();
 }
 
-void ConfigFile::setLanguage(const QString& language)
+void ConfigFile::setLanguage(const QString &language)
 {
     QSettings settings(configFile(), QSettings::IniFormat);
     settings.setValue(QLatin1String(languageC), language);

@@ -52,3 +52,6 @@ Root configure использует тот же physical validation-build-202611
 Qt redirect test requires Homebrew qthttpserver6.12.0_1 (совпадает с qtbase6.12.0_2/qtwebsockets6.12.0_1), теперь проверяется build.sh при CLIENT_TESTING=ON. Проверить HAVE_QHTTPSERVER=1 в compile_commands И наличие testDirectUrlCredentials в MOC/Qt test functions: после установки модуля один reconfigure без regeneration moc оказался недостаточен. Удалять весь build не нужно; обновить source mtime/сгенерировать только NextcloudPropagatorTest moc, пересобрать target и запустить explicit testDirectUrlCredentials.
 
 Перед будущей0.6.8 установкой отдельно подготовить актуальный metadata backup/rollback для Realm→SQLite. Диагностический build не является разрешением этой миграции; production bundles не запускать с пустыми settings.
+
+
+После master QA запущенные test apps закрыты; запускных .app/.appex/.xctest в диагностическом cache больше нет. Compiler objects/package repositories оставлены для reuse. Перед новым прогоном выполнить configure и build/relink, не ссылаться на удалённый test bundle и не применять --skip-build из прежнего отчёта. Metadata0.6.7 остаётся до отдельного выпуска0.6.8; build.sh обычного релиза без bump нельзя запускать поверх immutable PKG0.6.7.

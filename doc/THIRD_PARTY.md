@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Источники и лицензии
 
-Форк основан на [Nextcloud Desktop](https://github.com/nextcloud/desktop), авторы Nextcloud GmbH, Nextcloud contributors и исторические ownCloud contributors указаны в исходных SPDX/copyright headers. Текущая перенесённая основа — v35.0.1, upstream commit ad4a8503bcbb1749ea4f5955a65688cbe32305df; метаданные Git snapshot не заменяют историю upstream. Локальные изменения форка, включая pending connectionName, описаны в FORK.md/CHANGELOG/DEVELOPMENT_LOG.
+Форк основан на [Nextcloud Desktop](https://github.com/nextcloud/desktop), авторы Nextcloud GmbH, Nextcloud contributors и исторические ownCloud contributors указаны в исходных SPDX/copyright headers. Последняя установленная база —35.0.1; текущие исходники Unreleased0.6.8 перенесены с master cc930c7ce5703c37c40cd1b8dc84e1c6c9f1d119 относительно ad4a8503bcbb1749ea4f5955a65688cbe32305df; метаданные Git snapshot не заменяют историю upstream. Локальные изменения форка, включая pending connectionName, описаны в FORK.md/CHANGELOG/DEVELOPMENT_LOG.
 
 Сохранены COPYING и LICENSES/, REUSE metadata и per-file SPDX. Они являются источником применимых условий; этот индекс не меняет лицензию чужих файлов. Основной код GPL-2.0-or-later; часть существующих тестов имеет собственные CC0 headers, их не заменять. Новые файлы этого среза имеют GPL-2.0-or-later headers по правилам проекта.
 

@@ -288,14 +288,14 @@ Read doc/PROJECT_HANDOFF.md, doc/CURRENT_STATE.md, FORK.md and doc/DOCUMENTATION
 
 ## Owner release policy —03.11.2026 (replaces per-edit version bumps)
 
-Nextcloud Fork is a large, long-lived project. Accumulate work under Unreleased; keep the last released version in metadata until the owner explicitly requests a release. Installed release 0.6.7; owner authorized preparation of 0.6.7 on 2026-11-03. Metadata is now 0.6.7; do not increment again for candidate corrections. Owner requested opening Installer after preparation of 0.6.7; installed version is currently 0.6.6. Do not build, package, install, tag, deploy or publish during ordinary development. Diagnostic builds/tests are pre-authorized by the 2026-11-03 QA clarification below; release packaging, publication and replacement of installed apps still require the applicable owner command. Static checks that do not build artifacts are allowed. Candidate fixes within one release do not increment again. Preserve existing production/data boundaries. This overrides historical instructions to bump version after every edit.
+Nextcloud Fork is a large, long-lived project. Accumulate work under Unreleased; keep the last released version in metadata until the owner explicitly requests a release. Installed release 0.6.7; owner authorized preparation of 0.6.7 on 2026-11-03. Metadata is now 0.6.7; do not increment again for candidate corrections. Installed version was verified as0.6.7; current work is Unreleased0.6.8, including the full master source import. Do not build, package, install, tag, deploy or publish during ordinary development. Diagnostic builds/tests are pre-authorized by the 2026-11-03 QA clarification below; release packaging, publication and replacement of installed apps still require the applicable owner command. Static checks that do not build artifacts are allowed. Candidate fixes within one release do not increment again. Preserve existing production/data boundaries. This overrides historical instructions to bump version after every edit.
 
 Read [documentation index](doc/INDEX.md), [development/release procedure](doc/DEVELOPMENT.md), [architecture](doc/ARCHITECTURE.md), [decisions](doc/DECISIONS.md), [development log](doc/DEVELOPMENT_LOG.md), [third-party provenance](doc/THIRD_PARTY.md), and the current state/handoff when relevant. Keep this established doc/ structure rather than creating parallel docs/ copies.
 
 
 ## Owner installer requirement — 2026-11-03
 
-For subsequent builds, installers must request a graceful exit of the app being updated and wait for completion before replacement. Use that app's supported quit mechanism in its user's session, never launch its GUI as root. Bound the wait; if exit fails, refuse replacement with an actionable message. Do not forcibly terminate sync or touch accounts/domains. Apply this owner's general requirement to future builds of all owner-maintained installers; existing packages are not rebuilt automatically. Nextcloud implementation is in the built 0.6.6 package (not installed); immutable PKG0.6.5 retains its original manual-quit behavior.
+For subsequent builds, installers must request a graceful exit of the app being updated and wait for completion before replacement. Use that app's supported quit mechanism in its user's session, never launch its GUI as root. Bound the wait; if exit fails, refuse replacement with an actionable message. Do not forcibly terminate sync or touch accounts/domains. Apply this owner's general requirement to future builds of all owner-maintained installers; existing packages are not rebuilt automatically. Graceful-quit implementation shipped in0.6.6 and is retained in installed0.6.7; immutable PKG0.6.5 retains its original manual-quit behavior.
 
 
 ## Diagnostic QA policy — 2026-11-03
@@ -306,3 +306,8 @@ Owner permanently authorizes diagnostic builds and checks within the requested t
 ## Owner installer launch requirement — 2026-11-04
 
 Nextcloud Fork postinstall must launch the installed app after registration in the console user's session, using its fixed installed path, never as root. No session means defer to manual launch. Failure to open should explain manual recovery without failing an otherwise completed installation. Implemented under Unreleased0.6.8; do not claim existing PKG0.6.7 has this behavior or rebuild it in place.
+
+
+## Full upstream import context — 2026-11-07
+
+Current source baseline is master cc930c7ce5703c37c40cd1b8dc84e1c6c9f1d119 (35.1.0 alpha), imported in ce3cab1. Installed/released/metadata version remains0.6.7 on35.0.1, target0.6.8 Unreleased. Preserve fork helper/root-name/mutation queue and recursive .tests bundle isolation. AGENTS/53 Transifex paths deliberately retain local contents. Real Realm→GRDB migration has not run; binary rollback is not metadata rollback. Read latest CURRENT_STATE/PROJECT_HANDOFF before any release/install. Completed diagnostic bundles were removed; reconfigure/rebuild before rerunning tests, reuse the preserved caches and dependencies.

@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Устройство форка
 
-Текущий перенос исходников — Nextcloud Desktop master cc930c7c (35.1.0 alpha), Unreleased форка0.6.8. Установленная0.6.7 остаётся на35.0.1. C++/Qt: src/common (политики), src/libsync/src/csync (синхронизация), src/gui (аккаунты/UI). Swift File Provider — shell_integration/MacOSX/NextcloudFileProviderKit; extension bundles — NextcloudIntegration. build.sh управляет общей сборкой, подписью и PKG.
+Текущие исходники Unreleased — Nextcloud Desktop master cc930c7c (35.1.0 alpha), Unreleased форка0.6.8. Установленная0.6.7 остаётся на35.0.1. C++/Qt: src/common (политики), src/libsync/src/csync (синхронизация), src/gui (аккаунты/UI). Swift File Provider — shell_integration/MacOSX/NextcloudFileProviderKit; extension bundles — NextcloudIntegration. build.sh управляет общей сборкой, подписью и PKG.
 
 Hybrid сохраняет classic папки при включённом File Provider; запреты на Library/CloudStorage, пересечения и симлинки находятся в hybridsyncpaths. Реальный журнал и сетевой/серверный URL не являются пользовательскими подписями.
 

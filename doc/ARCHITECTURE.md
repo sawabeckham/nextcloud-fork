@@ -31,3 +31,14 @@ FilesDatabaseManager использует GRDB DatabasePool/SQLite WAL; запи
 Успешный import удаляет Realm. Legacy клиент при откате может создать Realm заново; новый importer считает её более свежим состоянием и заменяет SQLite. Поэтому rollback app bundle сам по себе не является корректным rollback metadata. Ни одна реальная база в этапе переноса не открывается новым production bundle. Исходные Realm/schema и migration tests заимствованы из официального master, детали происхождения в THIRD_PARTY.
 
 Master добавляет cancellation propagation и защиту superseded downloads, depth-batched concurrent working-set reads, coalescer уведомлений ancestors и pin-aware scan. Fork сохраняет auxiliary early-return до database/network init и root label metadata overlay; helper никогда не должен инициировать import. Native domain API использует optional removal result и discovery-success из master, но fork mutations сохраняют очередь до фактического callback, чтобы caller timeout не терял mapping/удаление.
+
+
+## Выборочные macOS fixes после master snapshot —11.11.2026
+
+Базовый snapshot cc930c7c сохранён, поверх него перенесены PR11030/11024/11253/11145. Working-set scan отдельно учитывает404 старого пути, перед записью удаления в одной GRDB transaction перечитывает текущие path/status; pending upload и уже записанный move могут отменить ложное удаление. Обычное отсутствие child в успешном depth-1 listing не получает эту404-защиту, чтобы не пропускать настоящие удаления. MOVE response после завершения scan остаётся известной upstream границей (#11237/#11236).
+
+Для folder own-read сохраняются permissions, полученные из parent listing; root exception остаётся, children продолжают принимать свои listed permissions. Правило применяется перед change comparison и redundant-write skip в обычном и paged enumeration. Permission changes приходят при следующем чтении parent.
+
+Item.create/modify пропускают только предупреждение об unsupported package, если текущий package уже исключён ignore list. Package branch сохраняется до lock-file processing; rename/move modify по прежнему сообщает предупреждение, потому что новый путь может больше не совпасть с ignore list. Существующий пользовательский ignore list автоматически не заменяется.
+
+AccountWizardController читает выбранный client certificate через QFile сразу после native chooser, сохраняет bytes до submit и очищает input по закрытию ClientCertificateDialog. Это устраняет повторное получение security scope для заново созданного NSURL; отсутствие/пустота файла отклоняются при выборе. QML layout не менялся; поддержка и реальные macOS sandbox/mTLS остаются отдельной live QA границей.

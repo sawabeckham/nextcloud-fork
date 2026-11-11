@@ -5,6 +5,7 @@
 import importlib.util
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,45 @@ spec.loader.exec_module(installer)
 
 
 class InstallerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.binaries = tempfile.TemporaryDirectory(prefix="fork-installer-architectures-")
+        cls.addClassCleanup(cls.binaries.cleanup)
+        cls.binary_dir = Path(cls.binaries.name)
+        source = cls.binary_dir / "fixture.c"
+        source.write_text("int installer_architecture_fixture(void) { return 0; }\n")
+        for architecture in ("arm64", "x86_64", "arm64e"):
+            subprocess.run([
+                "/usr/bin/clang", "-arch", architecture, "-dynamiclib", str(source),
+                "-o", str(cls.binary_dir / architecture),
+            ], check=True, capture_output=True)
+        subprocess.run([
+            "/usr/bin/lipo", "-create", str(cls.binary_dir / "arm64"),
+            str(cls.binary_dir / "x86_64"), "-output", str(cls.binary_dir / "universal"),
+        ], check=True, capture_output=True)
+
+    def install_binary(self, architecture, relative_path):
+        destination = self.app / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(self.binary_dir / architecture, destination)
+        for parent in destination.parents:
+            if parent.suffix == ".framework":
+                resources = parent / "Versions/A/Resources"
+                resources.mkdir(parents=True, exist_ok=True)
+                (resources / "Info.plist").write_bytes(plistlib.dumps({
+                    "CFBundleIdentifier": "site.manro.nextcloudfork.tests.fixture",
+                    "CFBundleExecutable": "Fixture",
+                    "CFBundlePackageType": "FMWK",
+                    "CFBundleVersion": "1",
+                }))
+                (parent / "Versions/Current").symlink_to("A", target_is_directory=True)
+                (parent / "Fixture").symlink_to("Versions/Current/Fixture")
+                (parent / "Resources").symlink_to("Versions/Current/Resources", target_is_directory=True)
+                break
+        subprocess.run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(self.app)],
+                       check=True, capture_output=True)
+        return destination
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="fork-installer-test-")
         self.addCleanup(self.temporary.cleanup)
@@ -69,7 +109,64 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             installer.validate_bundle(self.app, installer.fork_version())
 
+    def test_non_arm64_macho_is_rejected_recursively(self):
+        for architecture, relative_path in (
+            ("x86_64", "Contents/Frameworks/Fixture.framework/Versions/A/Fixture"),
+            ("universal", "Contents/PlugIns/platforms/libfixture.dylib"),
+            ("arm64e", "Contents/PlugIns/FileProviderExt.appex/Contents/Frameworks/libfixture.dylib"),
+        ):
+            with self.subTest(architecture=architecture):
+                binary = self.install_binary(architecture, relative_path)
+                with self.assertRaisesRegex(ValueError, "arm64"):
+                    installer.validate_bundle(self.app, installer.fork_version())
+                shutil.copyfile(self.binary_dir / "arm64", binary)
+
+    def test_arm64_framework_aliases_and_non_macho_resources_are_accepted(self):
+        self.install_binary("arm64", "Contents/Frameworks/Fixture.framework/Versions/A/Fixture")
+        resources = self.app / "Contents/Resources"
+        resources.mkdir()
+        (resources / "plain.txt").write_text("A resource, not an executable.\n")
+        subprocess.run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", str(self.app)],
+                       check=True, capture_output=True)
+        installer.validate_bundle(self.app, installer.fork_version())
+
+    def test_external_and_dangling_symlinks_are_rejected(self):
+        external = self.work / "external.dylib"
+        shutil.copyfile(self.binary_dir / "x86_64", external)
+        alias = self.app / "Contents/external.dylib"
+        for target in (external, self.binary_dir, self.work / "missing.dylib"):
+            with self.subTest(target=target.name):
+                alias.symlink_to(target)
+                with self.assertRaisesRegex(ValueError, "symlink"):
+                    installer.validate_bundle(self.app, installer.fork_version())
+                alias.unlink()
+
+    def test_macho_inspection_failure_is_rejected(self):
+        self.install_binary("arm64", "Contents/Frameworks/libfixture.dylib")
+        for error in (subprocess.CalledProcessError(1, "/usr/bin/lipo"), OSError("lipo unavailable")):
+            with self.subTest(error=type(error).__name__):
+                with patch.object(installer.subprocess, "run", side_effect=error) as run:
+                    with self.assertRaisesRegex(ValueError, "inspect Mach-O"):
+                        installer.validate_bundle(self.app, installer.fork_version())
+                    self.assertEqual(run.call_args.args[0][:2], ["/usr/bin/lipo", "-archs"])
+
+    def test_unreadable_directory_is_rejected(self):
+        directory = self.app / "Contents/unreadable"
+        directory.mkdir()
+        directory.chmod(0)
+        try:
+            with self.assertRaises(PermissionError):
+                installer.validate_bundle(self.app, installer.fork_version())
+        finally:
+            directory.chmod(0o700)
+
+    def test_malformed_macho_is_rejected(self):
+        (self.app / "Contents/malformed.dylib").write_bytes(bytes.fromhex("cffaedfe"))
+        with self.assertRaisesRegex(ValueError, "inspect Mach-O"):
+            installer.validate_bundle(self.app, installer.fork_version())
+
     def test_real_package_destination_and_payload(self):
+        self.install_binary("arm64", "Contents/Frameworks/libfixture.dylib")
         output = self.work / "folder with spaces/Nextcloud Fork.pkg"
         installer.build_installer(self.app, output)
         expanded = self.work / "expanded"
@@ -87,6 +184,9 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(package_info.find("upgrade-bundle/bundle").get("id"), installer.BUNDLE_ID)
         payload_app = component / "Payload" / installer.APP_NAME
         subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(payload_app)], check=True)
+        payload_binary = payload_app / "Contents/Frameworks/libfixture.dylib"
+        self.assertEqual(subprocess.check_output(["/usr/bin/lipo", "-archs", str(payload_binary)], text=True).split(), ["arm64"])
+        self.assertEqual(payload_binary.read_bytes(), (self.app / "Contents/Frameworks/libfixture.dylib").read_bytes())
         self.assertEqual((self.app / "Contents/Info.plist").read_bytes(), (payload_app / "Contents/Info.plist").read_bytes())
         self.assertTrue((component / "Scripts/preinstall").stat().st_mode & 0o111)
         self.assertTrue((component / "Scripts/postinstall").stat().st_mode & 0o111)

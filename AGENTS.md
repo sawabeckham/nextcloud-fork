@@ -311,3 +311,10 @@ Nextcloud Fork postinstall must launch the installed app after registration in t
 ## Full upstream import context — 2026-11-07
 
 Current source baseline is master cc930c7ce5703c37c40cd1b8dc84e1c6c9f1d119 (35.1.0 alpha), imported in ce3cab1. Installed version remains0.6.7 on35.0.1; metadata/ready PKG are0.6.8 on master, not installed. Preserve fork helper/root-name/mutation queue and recursive .tests bundle isolation. AGENTS/53 Transifex paths deliberately retain local contents. Real Realm→GRDB migration has not run; binary rollback is not metadata rollback. Read latest CURRENT_STATE/PROJECT_HANDOFF before any release/install. Completed diagnostic bundles were removed; reconfigure/rebuild before rerunning tests, reuse the preserved caches and dependencies.
+
+
+## Selective macOS fixes —2026-11-11
+
+The source baseline remains master cc930c7c plus selected upstream PR11030/11024/11145/11253, with their regression tests. Metadata/prepared immutable PKG remain0.6.8; source changes accumulate under Unreleased targeting0.6.9, not built/released/installed automatically. Current installed app was read-only verified as0.6.7,161Mach-O all arm64 only. The owner explicitly chose ARM64-only packaged applications, retaining cross-platform sources. Deleting source is not needed to remove Intel slices (there are none). Read latest CURRENT_STATE/PROJECT_HANDOFF for actual validation and known remaining MOVE/scan race.
+
+The owner's ARM64-only requirement is now enforced recursively before packaging in admin/fork/make-installer.py; every native Mach-O must be thin arm64 (including frameworks, plugins and extensions). Reject rather than strip or re-sign a signed bundle. Keep test_installer.py coverage (14cases) and platform sources.

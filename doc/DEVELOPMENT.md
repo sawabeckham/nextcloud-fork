@@ -58,3 +58,17 @@ Qt redirect test requires Homebrew qthttpserver6.12.0_1 (совпадает с q
 
 
 07.11: подготовлен PKG0.6.8, без установки. Подпись source/payload valid, versions35.0.50.68/68. Before installing: metadata backup обязателен как согласованный следующий этап из-за Realm→GRDB и автоматического запуска postinstall. Последние checksum/размер/результаты в CURRENT_STATE.
+
+
+## QA macOS backports —11.11.2026
+
+Для Swift package переиспользованы прежние scratch/config paths и команда `swift test --no-parallel --jobs 4 --scratch-path <physical>/fork-0.6.1/swift-tests --config-path <physical>/fork-0.6.1/swift-test-config`. Новые17регрессий запущены до production patches (ожидаемое падение) и после. Полный прогон:529XCTest/6skips/0fail и263SwiftTesting/37suites PASS. Это synthetic/temp database QA, не live FileProvider registration или Realm migration.
+
+Изменения сертификатов проверяются целями AccountWizardControllerTest и AccountWizardWindowQmlTest. Перед запуском bundle Info и все nested app IDs должны быть `.tests.*`; Qt new cases должны присутствовать в generated moc и `-functions`, одного успешного rebuild недостаточно. Known stale-MOC повторился для двух локальных certificate cases; обновить mtime конкретного test source и пересобрать соответствующий target вместо удаления всей среды.
+
+Диагностическая consuming сборка выполняется напрямую `cmake --build <physical>/fork-0.6.1/client --target nextcloud mac_overlayplugin mac_findersyncbroker mac_fileproviderplugin mac_fileprovideruiplugin -j 4`; `build.sh` не применяется, потому что автоматически создаёт PKG. Legacy NextcloudDev target по прежнему пишет в /Applications и не является безопасной диагностикой установленной программы. После QA убрать созданные raw .app/.appex/.xctest и свои raw logs, сохраняя signed release app/PKG и входные compiler/dependency caches. Итоговые результаты C++/consuming build — последний PROJECT_HANDOFF.
+
+Read-only ARM audit11.11: installed0.6.7/main35.0.1.67,161Mach-O толькоarm64; symlinks не считались отдельными binaries. Installed app regular-file bytes216943471. Уже нет x86_64 slices, поэтому обещать уменьшение размера удалением Intel architectures нельзя.
+
+
+ARM64 packaging gate: `python3 -B test/hybrid/test_installer.py` —14/14PASS11.11; тесты компилируют только временные архитектурные fixtures и удаляют их. `make-installer.py` рекурсивно проверяет все native Mach-O через lipo перед codesign/упаковкой, включая frameworks/plugins/appex; толькоthinarm64. Не исправлять провал путём lipo над подписанным app: пересобрать нужную зависимость/приложение. Существующий signed0.6.8 app проходит gate без изменения/переподписи. Python3.9-compatible lstat API используется вместо нового stat(follow_symlinks=...).

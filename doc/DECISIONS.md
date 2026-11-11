@@ -33,3 +33,12 @@ Finder получает имя существующего mapped domain с пр�
 ## 07.11.2026 — полный master вместо выборочных backports
 
 Владелец выбрал перенос всего master после обзора FileProvider/GRDB изменений. Snapshotcc930c7c, baselinead4a85035.0.1; shallow Git не расширяется до многолетней истории, применяется воспроизводимый three-way source diff и сохраняется происхождение. AGENTS/Transifex — явные protected exclusions. Новые async/optional native contracts адаптируются к fork mutation fence: caller timeout не снимает native queue и не теряет account mapping/removal. Поэтому create/remove сохраняют ожидание callback; превращение всего account lifecycle в async остаётся самостоятельным этапом. Realm migration не испытывается на пользовательской базе: synthetic tests сначала, живой переход только после backup/owner installation. Это future35.1.0 alpha source, не stable35.0.3 и не обещание готового релиза.
+
+
+## 11.11.2026 — выборочные исправления после полного master import
+
+Владелец одобрил перенос нужных macOS fixes из мониторинга. Переносим четыре проверенных PR11030/11024/11145/11253 вместе с upstream regression tests, сохраняя исходную основу cc930c7c, fork identity/hybrid/naming/mutation queue и isolation. Новый полный master snapshot, GRDB schema/dependency update и изменение аккаунтов не требуются. PR11260 (UTF-8 User-Agent) не переносился: текущий ASCII applicationName Nextcloud Fork не затронут.
+
+Metadata остаётся0.6.8; ранее доставленный PKG0.6.8 immutable, новые source changes накапливаются в Unreleased (цель следующего выпуска0.6.9). Владелец не запрашивал выпуск или установку в этом этапе. Повторное использование test/cache разрешено, но staging production identity не запускается. Состояние live migration и обязательность backup перед будущей установкой не меняются.
+
+Владелец также спросил об удалении всего не-ARM кода. Проверка установленного приложения:161Mach-O, каждый ровно arm64, без Intel slices. Удаление platform sources само по себе не уменьшит этот binary и повысит стоимость upstream merge. Владелец выбрал «Только ARM64 в готовом приложении»: общие/platform sources сохраняются. Добавляется проверка архитектуры всех native binaries перед будущей упаковкой; lipo thinning подписанного приложения не выполняется.

@@ -8,9 +8,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — целевая 0.6.9, ещё не выпущена
+
+- Перенос macOS upstream fixes: защита от ложного удаления при stale-path 404 во время перемещения (#11030), стабильные права mount points/received shares (#11024), чтение клиентского TLS-сертификата сразу после выбора и очистка при закрытии диалога (#11145), отсутствие лишнего предупреждения для игнорируемых macOS packages (#11253).
+- Упаковщик проверяет все нативные Mach-O внутри приложения и отклоняет Intel/universal/arm64e и ошибки проверки. Готовый app сохраняет толькоarm64; исходники других платформ сохранены. Регрессионные тесты14/14 PASS.
+- Подготовленный PKG0.6.8 остаётся неизменным. Metadata сохраняет0.6.8 до отдельной команды на выпуск; новый PKG/установка не выполняются. Фактические результаты QA текущего этапа — в doc/PROJECT_HANDOFF.md.
+
 ## [0.6.8] — 2026-11-07, PKG подготовлен; не установлен
 
-- Перенесён upstream master cc930c7c (35.1.0 alpha): GRDB migration, File Provider cancellation/scanning/permissions/locking и network redirect protection. Основные isolated tests/consuming builds прошли; live migration/новый release PKG не выполнялись.
+- Перенесён upstream master cc930c7c (35.1.0 alpha): GRDB migration, File Provider cancellation/scanning/permissions/locking и network redirect protection. Основные isolated tests/consuming builds прошли; live migration не выполнялась; результаты подготовленного PKG приведены ниже.
 
 - После установки postinstall запускает установленный Nextcloud Fork в сеансе console user. При отсутствии сеанса запуск откладывается; при ошибке запуска выводится способ открыть приложение вручную. Подписанный ARM64 PKG0.6.8 собран; установка и живая миграция ещё не выполнялись.
 

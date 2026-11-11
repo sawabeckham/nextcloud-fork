@@ -6,12 +6,12 @@
 #ifndef ACCOUNTWIZARDCONTROLLER_H
 #define ACCOUNTWIZARDCONTROLLER_H
 
+#include <QNetworkProxy>
 #include <QObject>
 #include <QPointer>
-#include <QNetworkProxy>
-#include <QStringList>
 #include <QSslCertificate>
 #include <QSslKey>
+#include <QStringList>
 #include <QUrl>
 
 #include <functional>
@@ -25,7 +25,8 @@
 class QNetworkReply;
 class QWindow;
 
-namespace OCC {
+namespace OCC
+{
 
 class SelectiveSyncDialog;
 class AccountState;
@@ -107,14 +108,14 @@ public:
         BrowserAuthStep,
         BasicAuthStep,
         SyncOptionsStep,
-        CompletedStep
+        CompletedStep,
     };
     Q_ENUM(Step)
 
     enum SyncMode {
         SyncEverything = 0,
         SelectiveSync,
-        VirtualFiles
+        VirtualFiles,
     };
     Q_ENUM(SyncMode)
 
@@ -308,6 +309,7 @@ private:
     [[nodiscard]] bool createSyncFolder(AccountState *accountState);
     [[nodiscard]] FolderDefinition syncFolderDefinition() const;
     void openLocalSyncFolderDialog(bool initialSelection);
+    void loadClientCertificateFile(const QUrl &fileUrl);
     [[nodiscard]] QUrl localFolderServerUrl() const;
     [[nodiscard]] QString sanitizedRemoteFolderEntityPath() const;
     void setCurrentStep(Step step);
@@ -340,8 +342,7 @@ private:
         AuthenticationRequired,
         NoAuthentication,
     };
-    struct WizardProxySettings
-    {
+    struct WizardProxySettings {
         QString _user;
         QString _password;
         QString _host;
@@ -393,6 +394,7 @@ private:
     QByteArray _clientCertBundle;
     QByteArray _clientCertPassword;
     QString _clientCertificatePath;
+    QByteArray _clientCertificateData;
     QString _clientCertificatePassword;
     QString _clientCertificateError;
     QSslKey _clientSslKey;

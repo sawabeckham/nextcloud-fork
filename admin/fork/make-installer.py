@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 import plistlib
 import re
+import stat
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -17,6 +18,12 @@ APP_NAME = "Nextcloud Fork.app"
 BUNDLE_ID = "site.manro.nextcloudfork"
 INSTALL_LOCATION = "/Applications/RomanenkoApp"
 PACKAGE_ID = f"{BUNDLE_ID}.installer"
+MACHO_MAGICS = frozenset((
+    bytes.fromhex("feedface"), bytes.fromhex("cefaedfe"),
+    bytes.fromhex("feedfacf"), bytes.fromhex("cffaedfe"),
+    bytes.fromhex("cafebabe"), bytes.fromhex("bebafeca"),
+    bytes.fromhex("cafebabf"), bytes.fromhex("bfbafeca"),
+))
 
 
 def fork_version():
@@ -25,6 +32,40 @@ def fork_version():
     if not match:
         raise ValueError("FORK_VERSION.cmake must contain three single-digit components")
     return match[1]
+
+
+def validate_arm64_architectures(app):
+    """Inspect every physical Mach-O; internal framework aliases share those files."""
+    bundle_root = app.resolve(strict=True)
+    pending = [app]
+    while pending:
+        directory = pending.pop()
+        for path in sorted(directory.iterdir()):
+            mode = path.lstat().st_mode
+            if stat.S_ISLNK(mode):
+                try:
+                    target = path.resolve(strict=True)
+                except (OSError, RuntimeError) as error:
+                    raise ValueError(f"Unresolvable bundle symlink: {path}") from error
+                if not target.is_relative_to(bundle_root):
+                    raise ValueError(f"Bundle symlink points outside the app: {path}")
+                continue
+            if stat.S_ISDIR(mode):
+                pending.append(path)
+                continue
+            if not stat.S_ISREG(mode):
+                raise ValueError(f"Unsupported bundle file: {path}")
+            with path.open("rb") as stream:
+                if stream.read(4) not in MACHO_MAGICS:
+                    continue
+            try:
+                result = subprocess.run(["/usr/bin/lipo", "-archs", str(path)],
+                                        check=True, capture_output=True, text=True)
+            except (OSError, subprocess.CalledProcessError) as error:
+                raise ValueError(f"Could not inspect Mach-O architectures: {path}") from error
+            architectures = result.stdout.split()
+            if architectures != ["arm64"]:
+                raise ValueError(f"Expected only arm64 in {path}; found: {' '.join(architectures) or 'unknown'}")
 
 
 def validate_bundle(app, version):
@@ -45,6 +86,7 @@ def validate_bundle(app, version):
             extension_info = plistlib.load(stream)
         if extension_info.get("CFBundleIdentifier") != f"{BUNDLE_ID}.{extension}":
             raise ValueError(f"Unexpected identifier for {extension}")
+    validate_arm64_architectures(app)
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 

@@ -59,11 +59,13 @@
 
 using namespace Qt::StringLiterals;
 
-namespace OCC {
+namespace OCC
+{
 
 Q_LOGGING_CATEGORY(lcAccountWizardController, "nextcloud.gui.accountwizardcontroller", QtInfoMsg)
 
-namespace {
+namespace
+{
 
 #if defined(APPLICATION_SERVER_URL) && defined(APPLICATION_SERVER_URL_ENFORCE)
 constexpr auto buildEnforcesServerUrl = true;
@@ -74,22 +76,17 @@ constexpr auto buildEnforcesServerUrl = false;
 bool localFolderContainsData(const QString &localSyncFolder)
 {
     const auto localFolder = QDir(localSyncFolder);
-    return localFolder.exists()
-        && !localFolder.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty();
+    return localFolder.exists() && !localFolder.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty();
 }
 
 [[nodiscard]] QUrl normalizedServerUrlForComparison(const QUrl &serverUrl)
 {
-    auto normalizedUrl = serverUrl.adjusted(QUrl::NormalizePathSegments
-                                            | QUrl::StripTrailingSlash
-                                            | QUrl::RemoveUserInfo
-                                            | QUrl::RemoveQuery
-                                            | QUrl::RemoveFragment);
+    auto normalizedUrl =
+        serverUrl.adjusted(QUrl::NormalizePathSegments | QUrl::StripTrailingSlash | QUrl::RemoveUserInfo | QUrl::RemoveQuery | QUrl::RemoveFragment);
     normalizedUrl.setScheme(normalizedUrl.scheme().toCaseFolded());
     normalizedUrl.setHost(normalizedUrl.host().toCaseFolded());
 
-    if ((normalizedUrl.scheme() == "http"_L1 && normalizedUrl.port() == 80)
-        || (normalizedUrl.scheme() == "https"_L1 && normalizedUrl.port() == 443)) {
+    if ((normalizedUrl.scheme() == "http"_L1 && normalizedUrl.port() == 80) || (normalizedUrl.scheme() == "https"_L1 && normalizedUrl.port() == 443)) {
         normalizedUrl.setPort(-1);
     }
     if (normalizedUrl.path() == "/"_L1) {
@@ -154,9 +151,9 @@ void AccountWizardController::initialiseAccount()
 
     initialiseOverrideServerChoices();
 
-    const auto defaultUrl =
-        overrideServerSelectionRequired() ? _overrideServerUrls.value(_overrideServerIndex) :
-        Theme::instance()->multipleOverrideServers() ? QString{} : Theme::instance()->overrideServerUrl();
+    const auto defaultUrl = overrideServerSelectionRequired() ? _overrideServerUrls.value(_overrideServerIndex)
+        : Theme::instance()->multipleOverrideServers()        ? QString{}
+                                                              : Theme::instance()->overrideServerUrl();
 
     _remoteFolder = Theme::instance()->defaultServerFolder();
     setServerUrl(defaultUrl);
@@ -231,11 +228,8 @@ bool AccountWizardController::overrideServerSelectionRequired() const
 
 bool AccountWizardController::startLoginFlowAutomatically() const
 {
-    return Theme::instance()->startLoginFlowAutomatically()
-        && Theme::instance()->forceOverrideServerUrl()
-        && !_serverUrl.isEmpty()
-        && !Theme::instance()->multipleOverrideServers()
-        && !overrideServerSelectionRequired();
+    return Theme::instance()->startLoginFlowAutomatically() && Theme::instance()->forceOverrideServerUrl() && !_serverUrl.isEmpty()
+        && !Theme::instance()->multipleOverrideServers() && !overrideServerSelectionRequired();
 }
 
 QStringList AccountWizardController::overrideServerNames() const
@@ -322,9 +316,7 @@ QString AccountWizardController::avatarUrl() const
 
 QString AccountWizardController::syncEverythingDescription() const
 {
-    return _syncEverythingDescription.isEmpty()
-        ? tr("Will require local storage")
-        : _syncEverythingDescription;
+    return _syncEverythingDescription.isEmpty() ? tr("Will require local storage") : _syncEverythingDescription;
 }
 
 QString AccountWizardController::localSyncFolder() const
@@ -564,9 +556,7 @@ bool AccountWizardController::proxyAuthenticationRequired() const
 
 void AccountWizardController::setProxyAuthenticationRequired(bool proxyAuthenticationRequired)
 {
-    const auto proxyAuthentication = proxyAuthenticationRequired
-        ? ProxyAuthentication::AuthenticationRequired
-        : ProxyAuthentication::NoAuthentication;
+    const auto proxyAuthentication = proxyAuthenticationRequired ? ProxyAuthentication::AuthenticationRequired : ProxyAuthentication::NoAuthentication;
     if (_proxySettings._needsAuth == proxyAuthentication) {
         return;
     }
@@ -882,15 +872,17 @@ void AccountWizardController::slotFindServerBehindRedirect()
     redirectCheckJob->setTimeout(qMin(2000ll, redirectCheckJob->timeoutMsec()));
 
     auto permanentRedirects = std::make_shared<int>(0);
-    connect(redirectCheckJob, &AbstractNetworkJob::redirected, this,
-        [permanentRedirects, account = _account](QNetworkReply *reply, const QUrl &targetUrl, int count) {
-            const auto httpCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if (count == *permanentRedirects && (httpCode == 301 || httpCode == 308)) {
-                qCInfo(lcAccountWizardController) << account->url() << "was redirected to" << targetUrl;
-                account->setUrl(targetUrl);
-                *permanentRedirects += 1;
-            }
-        });
+    connect(redirectCheckJob,
+            &AbstractNetworkJob::redirected,
+            this,
+            [permanentRedirects, account = _account](QNetworkReply *reply, const QUrl &targetUrl, int count) {
+                const auto httpCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                if (count == *permanentRedirects && (httpCode == 301 || httpCode == 308)) {
+                    qCInfo(lcAccountWizardController) << account->url() << "was redirected to" << targetUrl;
+                    account->setUrl(targetUrl);
+                    *permanentRedirects += 1;
+                }
+            });
 
     connect(redirectCheckJob, &SimpleNetworkJob::finishedSignal, this, [this] {
         auto *job = new CheckServerJob(_account, this);
@@ -937,10 +929,8 @@ void AccountWizardController::slotNoServerFound(QNetworkReply *reply)
     if (!_account->url().isValid()) {
         message = tr("Invalid URL");
     } else {
-        message = tr("Failed to connect to %1 at %2:\n%3")
-            .arg(Theme::instance()->appNameGUI(),
-                 _account->url().toString(),
-                 job ? job->errorString() : QString{});
+        message =
+            tr("Failed to connect to %1 at %2:\n%3").arg(Theme::instance()->appNameGUI(), _account->url().toString(), job ? job->errorString() : QString{});
     }
 
     setBusy(false);
@@ -953,8 +943,7 @@ void AccountWizardController::slotNoServerFound(QNetworkReply *reply)
 void AccountWizardController::slotNoServerFoundTimeout(const QUrl &url)
 {
     setBusy(false);
-    setErrorText(tr("Timeout while trying to connect to %1 at %2.")
-        .arg(Utility::escape(Theme::instance()->appNameGUI()), Utility::escape(url.toString())));
+    setErrorText(tr("Timeout while trying to connect to %1 at %2.").arg(Utility::escape(Theme::instance()->appNameGUI()), Utility::escape(url.toString())));
     handleFailedServerConnection(url, false);
 }
 
@@ -1153,7 +1142,7 @@ void AccountWizardController::slotAuthError(QNetworkReply *reply)
         }
 
         errorMessage = tr("The authenticated request to the server was redirected to \"%1\". The URL is bad, the server is misconfigured.")
-            .arg(Utility::escape(redirectUrl.toString()));
+                           .arg(Utility::escape(redirectUrl.toString()));
     } else if (reply->error() == QNetworkReply::ContentNotFoundError) {
         completeAuthentication();
         return;
@@ -1407,13 +1396,9 @@ void AccountWizardController::initialiseLocalSyncFolder()
 #endif
     }
 
-    const auto strategy = overrideLocalDir
-        ? FolderMan::GoodPathStrategy::AllowOverrideExistingPath
-        : FolderMan::GoodPathStrategy::AllowOnlyNewPath;
-    setLocalSyncFolder(localFolder.isEmpty()
-        ? QString{}
-        : FolderMan::instance()->findGoodPathForNewSyncFolder(localFolder, localFolderServerUrl(), strategy),
-        overrideLocalDir);
+    const auto strategy = overrideLocalDir ? FolderMan::GoodPathStrategy::AllowOverrideExistingPath : FolderMan::GoodPathStrategy::AllowOnlyNewPath;
+    setLocalSyncFolder(localFolder.isEmpty() ? QString{} : FolderMan::instance()->findGoodPathForNewSyncFolder(localFolder, localFolderServerUrl(), strategy),
+                       overrideLocalDir);
 }
 
 void AccountWizardController::setLocalSyncFolder(const QString &localSyncFolder, bool selectedByUser, const QByteArray &bookmarkData)
@@ -1440,10 +1425,7 @@ void AccountWizardController::setLocalSyncFolder(const QString &localSyncFolder,
 void AccountWizardController::promptForInitialLocalSyncFolderIfNeeded()
 {
 #ifdef Q_OS_MACOS
-    if (_initialLocalSyncFolderPromptShown
-        || _localSyncFolderSelected
-        || _currentStep != SyncOptionsStep
-        || !localSyncFolderRequired()) {
+    if (_initialLocalSyncFolderPromptShown || _localSyncFolderSelected || _currentStep != SyncOptionsStep || !localSyncFolderRequired()) {
         return;
     }
 
@@ -1467,8 +1449,8 @@ void AccountWizardController::validateLocalSyncFolder()
     if (folderRequired) {
         const auto freeBytes = availableLocalSpace();
         if (freeBytes >= 0) {
-            localSyncFolderFreeSpace = tr("%1 free space", "%1 gets replaced with the size and a matching unit. Example: 3 MB or 5 GB")
-                .arg(Utility::octetsToString(freeBytes));
+            localSyncFolderFreeSpace =
+                tr("%1 free space", "%1 gets replaced with the size and a matching unit. Example: 3 MB or 5 GB").arg(Utility::octetsToString(freeBytes));
         }
     }
 
@@ -1502,8 +1484,7 @@ void AccountWizardController::validateLocalSyncFolder()
             localSyncFolderError = tr("Please choose an empty local sync folder.");
         }
     }
-    const auto localSyncFolderValid = !folderRequired
-        || (!_localSyncFolderPickerOpen && localSyncFolderError.isEmpty());
+    const auto localSyncFolderValid = !folderRequired || (!_localSyncFolderPickerOpen && localSyncFolderError.isEmpty());
 
     if (_localSyncFolderFreeSpace != localSyncFolderFreeSpace) {
         _localSyncFolderFreeSpace = localSyncFolderFreeSpace;
@@ -1536,9 +1517,7 @@ qint64 AccountWizardController::availableLocalSpace() const
 #else
         QDir::homePath();
 #endif
-    const auto path = !QDir(localFolder).exists() && localFolder.contains(homePath)
-        ? homePath
-        : localFolder;
+    const auto path = !QDir(localFolder).exists() && localFolder.contains(homePath) ? homePath : localFolder;
     const QStorageInfo storage(QDir::toNativeSeparators(path));
     return storage.isValid() ? storage.bytesAvailable() : -1;
 }
@@ -1662,7 +1641,7 @@ void AccountWizardController::slotCreateRemoteFolderFinished(QNetworkReply *repl
         setErrorText(tr("The remote folder creation failed because the provided credentials are wrong. Please go back and check your credentials."));
     } else {
         setErrorText(tr("Remote folder %1 creation failed with error <tt>%2</tt>.")
-            .arg(Utility::escape(_remoteFolder), QString::number(static_cast<int>(networkError))));
+                         .arg(Utility::escape(_remoteFolder), QString::number(static_cast<int>(networkError))));
     }
 }
 
@@ -1730,9 +1709,7 @@ bool AccountWizardController::createSyncFolder(AccountState *accountState)
 
     folder->journalDb()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncBlackList, _selectiveSyncBlacklist);
     const auto preWhitelistRoot = _syncMode != SyncEverything || (!_askBeforeLargeFolders && !_askBeforeExternalStorage);
-    folder->journalDb()->setSelectiveSyncList(
-        SyncJournalDb::SelectiveSyncWhiteList,
-        preWhitelistRoot ? QStringList() << QLatin1String("/") : QStringList());
+    folder->journalDb()->setSelectiveSyncList(SyncJournalDb::SelectiveSyncWhiteList, preWhitelistRoot ? QStringList() << QLatin1String("/") : QStringList());
     folderMan->scheduleAllFolders();
     return true;
 }
@@ -1855,11 +1832,7 @@ void AccountWizardController::openSelectiveSync()
     const auto previousSelectiveSyncSize = _selectiveSyncSize;
     setSyncMode(SelectiveSync);
     if (!_selectiveSyncDialog) {
-        _selectiveSyncDialog = new SelectiveSyncDialog(_account,
-            _remoteFolder,
-            _selectiveSyncBlacklist,
-            nullptr,
-            Qt::Dialog | Qt::FramelessWindowHint);
+        _selectiveSyncDialog = new SelectiveSyncDialog(_account, _remoteFolder, _selectiveSyncBlacklist, nullptr, Qt::Dialog | Qt::FramelessWindowHint);
         _selectiveSyncDialog->setAttribute(Qt::WA_DeleteOnClose);
         _selectiveSyncDialog->setWindowModality(Qt::ApplicationModal);
         connect(_selectiveSyncDialog, &SelectiveSyncDialog::finished, this, [this, previousSyncMode, previousBlacklist, previousSelectiveSyncSize] {
@@ -2100,24 +2073,41 @@ void AccountWizardController::useClientCertificateForSecureConnection()
 
 void AccountWizardController::chooseClientCertificate()
 {
-    const auto fileUrl = QFileDialog::getOpenFileUrl(nullptr,
-        tr("Select a certificate"),
-        QUrl(),
-        tr("Certificate files (*.p12 *.pfx)"));
+    const auto fileUrl = QFileDialog::getOpenFileUrl(nullptr, tr("Select a certificate"), QUrl(), tr("Certificate files (*.p12 *.pfx)"));
     if (fileUrl.isEmpty()) {
         return;
     }
 
-#ifdef Q_OS_MACOS
-    const auto scopedAccess = Utility::MacSandboxSecurityScopedAccess::create(fileUrl);
-    if (!scopedAccess->isValid()) {
-        _clientCertificateError = tr("Could not access the selected certificate file.");
+    loadClientCertificateFile(fileUrl);
+}
+
+void AccountWizardController::loadClientCertificateFile(const QUrl &fileUrl)
+{
+    // The open panel already granted access; read the file now so nothing has to re-acquire it later.
+    const auto localPath = fileUrl.toLocalFile();
+    QFile certFile(localPath);
+    QByteArray certData;
+    QString error;
+    if (!certFile.open(QFile::ReadOnly)) {
+        qCWarning(lcAccountWizardController) << "Failed to open certificate file:" << localPath << certFile.errorString();
+        error = tr("Could not access the selected certificate file.");
+    } else {
+        certData = certFile.readAll();
+        if (certData.isEmpty()) {
+            qCWarning(lcAccountWizardController) << "Certificate file is empty:" << localPath;
+            error = tr("The selected certificate file is empty.");
+        }
+    }
+    if (certData.isEmpty()) {
+        _clientCertificatePath.clear();
+        _clientCertificateData.clear();
+        _clientCertificateError = error;
         Q_EMIT clientCertificateChanged();
         return;
     }
-#endif
 
-    _clientCertificatePath = fileUrl.toLocalFile();
+    _clientCertificateData = certData;
+    _clientCertificatePath = localPath;
     _clientCertificateError.clear();
     Q_EMIT clientCertificateChanged();
 }
@@ -2128,31 +2118,20 @@ bool AccountWizardController::submitClientCertificate()
         return false;
     }
 
-    QFile certFile(_clientCertificatePath);
-    if (!certFile.open(QFile::ReadOnly)) {
-        qCWarning(lcAccountWizardController) << "Failed to open certificate file:" << _clientCertificatePath;
-        _clientCertificateError = tr("Could not access the selected certificate file.");
-        Q_EMIT clientCertificateChanged();
-        return false;
-    }
-
-    const auto certData = certFile.readAll();
     const auto certPassword = _clientCertificatePassword.toLocal8Bit();
 
-    auto certDataCopy = certData;
-    QBuffer certDataBuffer(&certDataCopy);
-    certDataBuffer.open(QIODevice::ReadOnly);
-    if (!QSslCertificate::importPkcs12(&certDataBuffer,
-            &_clientSslKey,
-            &_clientSslCertificate,
-            &_clientSslCaCertificates,
-            certPassword)) {
-        _clientCertificateError = tr("Could not load certificate. Maybe wrong password?");
-        Q_EMIT clientCertificateChanged();
-        return false;
+    {
+        QBuffer certDataBuffer(&_clientCertificateData);
+        certDataBuffer.open(QIODevice::ReadOnly);
+        if (!QSslCertificate::importPkcs12(&certDataBuffer, &_clientSslKey, &_clientSslCertificate, &_clientSslCaCertificates, certPassword)) {
+            qCWarning(lcAccountWizardController) << "Failed to import PKCS#12 bundle:" << _clientCertificatePath;
+            _clientCertificateError = tr("Could not load certificate. Maybe wrong password?");
+            Q_EMIT clientCertificateChanged();
+            return false;
+        }
     }
 
-    _clientCertBundle = certData;
+    _clientCertBundle = _clientCertificateData;
     _clientCertPassword = certPassword;
 
     clearClientCertificateInput();
@@ -2163,6 +2142,7 @@ bool AccountWizardController::submitClientCertificate()
 void AccountWizardController::clearClientCertificateInput()
 {
     _clientCertificatePath.clear();
+    _clientCertificateData.clear();
     _clientCertificatePassword.clear();
     _clientCertificateError.clear();
     Q_EMIT clientCertificateChanged();

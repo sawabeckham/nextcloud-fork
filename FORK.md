@@ -156,3 +156,12 @@ Personal Team → Manage Certificates → + → Apple Development. `UNSIGNED=1 .
 
 ### 0.2 — 2026-10-23 (Codex)
 - Политика совместной работы, проверка путей, брендирование, неподписанная сборка клиента и расширений.
+
+
+## Unreleased после PKG0.6.8 —11.11.2026
+
+Поверх mastercc930c7c выборочно перенесены macOS fixes PR11030/11024/11145/11253: stale-path404 при перемещении, permissions mount points, sandbox client certificate selection и предупреждения об игнорируемых packages. Полная основа/миграция/зависимости не заменялись повторно. Metadata0.6.8 и готовый immutable PKG0.6.8 сохранены; следующая цель0.6.9 ещё не выпущена. Последние фактические QA/results — CURRENT_STATE/PROJECT_HANDOFF, происхождение и лицензии — THIRD_PARTY.
+
+Установленная0.6.7 уже полностью ARM64:11.11 проверены161Mach-O, x86_64/universal binaries нет. Исходники других платформ пока сохранены для upstream compatibility; их удаление не уменьшит уже ARM64-only installed bundle.
+
+Перед будущей упаковкой make-installer.py проверяет каждый native Mach-O: толькоthinarm64, безIntel/universal/arm64e. Отказ не исправляется правкой подписанного бандла — нужна пересборка. Профиль упаковщика14/14PASS, готовый signed0.6.8 app проходит новый gate; новыйPKG в этапе11.11 не создавался.

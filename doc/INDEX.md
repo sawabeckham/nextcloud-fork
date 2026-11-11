@@ -18,3 +18,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 - [Подпись Finder](MACOS_FINDER_LOCATION_NAMING.md): исследование системного поведения и доказательства 0.6.4.
 
 Upstream-инструкции [macOS development](macOS-development.md), [терминология](terminology.md) и [стиль](writing-style.md) сохраняются; инструкции владельца о выпуске имеют приоритет.
+
+
+## Продолжение11.11.2026
+
+Выборочные macOS fixes PR11030/11024/11145/11253 после PKG0.6.8; исходники Unreleased0.6.9, metadata0.6.8. Читать актуальные первые и последние разделы CURRENT_STATE/PROJECT_HANDOFF и provenance THIRD_PARTY. Установленная программа/готовыйPKG не заменяются этим этапом. ARM64 audit:161Mach-O толькоarm64, код других платформ пока сохранён.

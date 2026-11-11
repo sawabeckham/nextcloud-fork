@@ -26,3 +26,6 @@ Upstream-инструкции [macOS development](macOS-development.md), [тер
 
 
 11.11.2026 publicPKGhosting: [каноническая раздача и правила выпуска](DEVELOPMENT.md), [итог переноса/анонимная проверка/cleanup](PROJECT_HANDOFF.md). Nextcloud source repo публичный по прямому выбору владельца; existing0.6.4release перенесён вместе со всемиsource/licenseassets, Tweeks source остаётсяprivate.
+
+
+11.11:0.6.9 собрана и установлена; публичный handoff содержит только продуктовые сведения и обезличенные результаты, локальная операционная передача сохраняется приватно. Следующая цель0.7.0, metadata0.6.9; PKG архивирован в draftRelease v0.6.9 до проверки публичного source/license комплекта.

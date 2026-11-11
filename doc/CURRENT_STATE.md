@@ -649,3 +649,8 @@ Cleanup подтверждён: активных AccountWizardControllerTest/qml
 
 
 Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM64 gate, tests и отчёт); отправляется в прежнюю приватную origin/fork. Следующий документационный commit не меняет этот source snapshot.
+
+
+## Открытая задача11.11 — PKG hosting и Tweeks download
+
+Владелец хочет PKG в GitHub Releases репозитория исходников. Source repository private, Tweeks installer пока скачивает анонимно public0.6.4 из romanenko-tweeks-releases. Нужен выбор access/public mirror схемы; вопрос задан, source/catalog/releases не менялись. Инвентаризация, hashes, точные owning files и запрет компиляции Tweeks вне main — последний PROJECT_HANDOFF. Это отдельная задача от уже завершённых4macOSfixes/ARM64gate.

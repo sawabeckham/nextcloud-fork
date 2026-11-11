@@ -387,3 +387,18 @@ Cleanup подтверждён: активных AccountWizardControllerTest/qml
 
 
 Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM64 gate, tests и отчёт); отправляется в прежнюю приватную origin/fork. Следующий документационный commit не меняет этот source snapshot.
+
+
+## 11.11.2026 — запрос хранения PKG рядом с исходниками и ссылки Tweeks
+
+Владелец запросил хранить PKG в том же репозитории, где исходники, и изменить download link Romanenko Tweeks. Это запрос миграции хранилища, не новый build/release приложения и не разрешение сделать private source repository публичным. Предполагаемое место — GitHub Releases `sawabeckham/nextcloud-fork`; не добавлять большие PKG в Git tree. Локальная доставка `~/Github_local/pkg` по прежнему сохраняется.
+
+Проверено фактически: nextcloud-fork private/default fork, GitHub Releases пока0; source HEAD133ae7f, рабочее дерево до задачи чистое. Tweeks branch codex/reliable-updates-3.2 также чистая до исследования; каталог `third-party/InstallerPrograms/catalog.plist` всё ещё pin0.6.4 на публичный `sawabeckham/romanenko-tweeks-releases`, tag `nextcloud-fork-v0.6.4`, file `Nextcloud-Fork-0.6.4-arm64.pkg`, SHA256b68b4cb314a2102813b89095d1a073d422e1fa26341248380243d24ea7054944. Сохранённый cache PKG0.6.4 совпадает с pin. Public release действительно содержит PKG, source companion archives (включая Qt), manifest, licenses/notices и SHA256SUMS; они не удалялись и не переносились в этом шаге.
+
+Технический blocker смены прямой ссылки: InstallerDownload.swift создаёт URLSession downloadTask(URL), InstallerPrograms.swift использует ephemeral session без GitHub authentication; initial HTTPS allowlist принимает github.com. Private release asset по новой browser URL не становится анонимно доступным. Простая смена catalog URL будет нерабочей. Токены в catalog/binary/URL не добавлять и private repo не раскрывать автоматически. Владельцу задан вопрос: private GitHub authorization вTweeks, private archive+public download mirror либо явное изменение приватности. Ответ пока ожидается; зависимые source/catalog/release mutations отложены.
+
+Дополнительные доступные byte-identical readyPKG:0.6.7 SHA256b85d775b11407307f5ac7c13ae096565b27b7250c5595a754353f37f1e49867f(source1c3baf6, metadata0.6.7);0.6.8 SHA256c6e79432796c0bf11c98801b5e0aa4d0ae313895b4151cfefc112425b66dbe08(source9dacc2e, master35.1alpha). Перенос ссылки не должен молча обновить pinned0.6.4 до experimental0.6.8. Накопленные source fixes4acb6be ещё не входят в эти старые PKG.
+
+Tweeks current AGENTS11.11 требует все app/pkg/diagnostic binary/compile checks только в главном чате01a192f4-0ce6-7892-82b3-2892e4217e45. Здесь разрешены source/static changes и handoff, но компиляция Tweeks не запускалась. Существующие updater/download trust constraints и подписи/hash не ослаблять ради новой ссылки.
+
+Выполнены read-only Git/API/code/catalog/hash checks. Установленные app/accounts/данные, готовые PKG, GitHub Releases/tags и исходники Tweeks не менялись. Следующий конкретный шаг — получить выбор download/access схемы, затем подготовить согласованные Releases/assets и pinned catalog metadata, проверить SHA256 и скачивание, сохранить handoff главному чату Tweeks для его единственной сборки по отдельной команде.

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — целевая 0.6.9, ещё не выпущена
+## [0.6.9] — 2026-11-11, кандидат; сборка и установка запрошены
 
 - Перенос macOS upstream fixes: защита от ложного удаления при stale-path 404 во время перемещения (#11030), стабильные права mount points/received shares (#11024), чтение клиентского TLS-сертификата сразу после выбора и очистка при закрытии диалога (#11145), отсутствие лишнего предупреждения для игнорируемых macOS packages (#11253).
 - Упаковщик проверяет все нативные Mach-O внутри приложения и отклоняет Intel/universal/arm64e и ошибки проверки. Готовый app сохраняет толькоarm64; исходники других платформ сохранены. Регрессионные тесты14/14 PASS.

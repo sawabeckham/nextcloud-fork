@@ -664,3 +664,10 @@ Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM6
 
 
 ПубликацияPKGhosting11.11завершена:canonicalrelease nextcloud-fork-v0.6.4,11assets/418609997bytes, всеserverdigestsidenticaloriginal; publicdownloadverified. Oldreleasecompatibilitymirror сохранён. Предыдущиеpendingaccess/upload записи выше описывают уже завершённые этапы.
+
+
+## 11.11.2026 — владелец запросил установку0.6.9 с новыми исправлениями
+
+Прямая команда «надо установить новую версию форка с новыми правками» разрешает подготовить новыйPKG и установитьего. Metadata повышена один раз0.6.8→0.6.9; priorimmutablePKG0.6.8 не содержит4macOSbackports/ARM64gate4acb6be, поэтому не устанавливаемего вместо запрошенныхfixes. Candidatecorrections дальше не повышаютномер. Sourcebase7ea9ac2; установленная read-only receipt0.6.7/Info35.0.1.67 подтверждена.
+
+Используется существующийphysicalcache validation-build-20261101/fork-0.6.1 и прежниеinputdeps/signingTeam. build.sh выполнитfullARM64all/profile/signing/localPKGdelivery; remotepublicationновогоbinary не подразумевается этойкомандой и требует отдельной source/license readiness. Пока идётсборка, workingclient/accountdomains не меняются. Перед установкой нужен свежий coherent per-domainmetadata/queues backup и workingapp/rollbackartifact: новыйpostinstall автоматически запускаетapp и Realm→GRDB import можетудалитьRealm. Исследуется поддерживаемая quiescence extension безdomainremove/reset. Backup содержитличныеmetadata и остаётсятолько вprivate userApplicationSupport, неGit. Результатысборки/backup/установки будутотмечены послефактическихдействий.

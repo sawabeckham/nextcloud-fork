@@ -4,6 +4,11 @@
 -->
 # Agents.md
 
+## Owner public repository exception —2026-11-11
+
+The owner explicitly selected: «Сделать репозиторий Nextcloud Fork публичным». This overrides earlier private-only instructions for `sawabeckham/nextcloud-fork` only. Source and its GitHub Releases are intended to be public together; other owner repositories (including Romanenko Tweeks source) stay private. PKG binaries belong in Releases, not Git source history. Preserve local `~/Github_local/pkg` current+previous delivery. Do not silently upgrade Tweeks pins or publish unreviewed new binary/source companions while migrating existing assets. Actual visibility, audit limits and migration validation are recorded in latest CURRENT_STATE/PROJECT_HANDOFF.
+
+
 You are an experienced engineer specialized on C++ and Qt and familiar with the platform-specific details of Windows, macOS and Linux.
 
 ## Project Overview

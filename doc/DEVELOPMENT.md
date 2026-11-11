@@ -72,3 +72,12 @@ Read-only ARM audit11.11: installed0.6.7/main35.0.1.67,161Mach-O толькоarm
 
 
 ARM64 packaging gate: `python3 -B test/hybrid/test_installer.py` —14/14PASS11.11; тесты компилируют только временные архитектурные fixtures и удаляют их. `make-installer.py` рекурсивно проверяет все native Mach-O через lipo перед codesign/упаковкой, включая frameworks/plugins/appex; толькоthinarm64. Не исправлять провал путём lipo над подписанным app: пересобрать нужную зависимость/приложение. Существующий signed0.6.8 app проходит gate без изменения/переподписи. Python3.9-compatible lstat API используется вместо нового stat(follow_symlinks=...).
+
+
+## PKG и исходники в одном публичном GitHub repo —11.11.2026
+
+Владелец явно выбрал public для `sawabeckham/nextcloud-fork`, отменив прежнее private-only правило только для этого проекта. Canonical binary hosting — GitHub Releases этого же репозитория; большие PKG не коммитятся в source tree. Локальная папка `~/Github_local/pkg` остаётся (current+previous), публичная история релизов не удаляется по локальной retention. Само изменение правила не разрешает новое app/pkg build или выдавать прежний бинарник за содержащий свежие Unreleased fixes.
+
+Первый перенос сохраняет pinned0.6.4: tag `nextcloud-fork-v0.6.4`, PKG SHA256b68b4cb314a2102813b89095d1a073d422e1fa26341248380243d24ea7054944, все11ранее опубликованных файлов/лицензий/source companions побайтно. Историческая база0.6.4 —b8a3273, но PKG собран с незакоммиченными изменениями того этапа: только полный source-review asset вместе с Qt/non-Qt companions отражает опубликованный комплект. Автоматический GitHub source ZIP базового тега не выдавать за точные соответствующие исходники0.6.4. Старый romanenko-tweeks-releases/nextcloud-fork-v0.6.4 остаётся совместимым зеркалом для существующих Tweeks. Новая catalog URL использует nextcloud-fork/releases/download того же tag/filename, version/hash/trust не меняются.
+
+Перед публикацией новых версий отдельно сверить source/build snapshot, payload/signatures, dependency/source/license materials;0.6.7/0.6.8 не становятся публичными релизами только потому, что локально готовы. Накопленные4macOSfixes и ARM64gate остаются Unreleased. Обновление pinned URL в исходниках Tweeks требует его следующей согласованной main-session сборки; установленный Tweeks не меняется от одной правки каталога в Git.

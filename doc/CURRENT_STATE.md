@@ -5,6 +5,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Текущее состояние nextcloud-fork
 
+**Public hosting11.11 завершён: NextcloudFork repo публичный; неизменный PKG0.6.4 и10source/license materials доступны в его Releases. АнонимныйdownloadHTTP200/75184508bytes/SHA256совпал сTweeks pin. Tweeks sourceURL исправлен (d346b1f), войдёт в его4.4.7; Tweeks repo private, бинарники не обновлялись. Итог/cleanup — последнийPROJECT_HANDOFF.**
+
 **Актуально11.11.2026 (source commit `4acb6be`, branch `fork`): выборочно перенесены macOS PR11030/11024/11145/11253 поверх mastercc930c7c; изменения Unreleased (цель0.6.9), metadata/готовый immutable PKG0.6.8 сохранены. Swift full529XCTest/6skips+263SwiftTesting PASS, certificate C++51/QML20 PASS. Consuming ARM64 main/all4native build и packaging14tests PASS; cleanup завершён (подробности в последнем разделе). Установленная0.6.7/35.0.1.67 не менялась;161Mach-O толькоarm64. Реальная миграция/серверная синхронизация не проверены.**
 
 Сверка07.11.2026: PKG0.6.8 собран и проверен, metadata0.6.8/source9dacc2e/upstream mastercc930c7c(35.1.0 alpha). Main35.0.50.68/extension68; подписи/payload/ARM64 прошли, профиль13/13 PASS. Установленная0.6.7 на35.0.1 сохранена, Installer не запускался. Перед установкой нужен свежий metadata backup/rollback plan: пакет автоматически запускает app и выполняется переход Realm→GRDB. Hash/результаты/cleanup — в последнем разделе.
@@ -654,3 +656,11 @@ Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM6
 ## Открытая задача11.11 — PKG hosting и Tweeks download
 
 Владелец хочет PKG в GitHub Releases репозитория исходников. Source repository private, Tweeks installer пока скачивает анонимно public0.6.4 из romanenko-tweeks-releases. Нужен выбор access/public mirror схемы; вопрос задан, source/catalog/releases не менялись. Инвентаризация, hashes, точные owning files и запрет компиляции Tweeks вне main — последний PROJECT_HANDOFF. Это отдельная задача от уже завершённых4macOSfixes/ARM64gate.
+
+
+## Public source migration11.11 — access choice выполнен
+
+Владелец явно выбрал public дляNextcloudFork; visibilityизменена и анонимныйAPIпроверен. Tweeks source остаётсяprivate. История и данные проверены bounded audit без блокирующих находок; ограничения и числа — последнийPROJECT_HANDOFF. Все11old0.6.4assets сверены поsize/SHA; uploaddraftпродолжается, canonicaldownloadещё не объявлен проверенным. SourceURL-onlychangeTweeksd346b1f сохранёнбезсборки. Последующая финальная запись завершит миграцию послеanonymousPKGverification.
+
+
+ПубликацияPKGhosting11.11завершена:canonicalrelease nextcloud-fork-v0.6.4,11assets/418609997bytes, всеserverdigestsidenticaloriginal; publicdownloadverified. Oldreleasecompatibilitymirror сохранён. Предыдущиеpendingaccess/upload записи выше описывают уже завершённые этапы.

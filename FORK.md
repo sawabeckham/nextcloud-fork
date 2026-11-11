@@ -1,6 +1,6 @@
 # Nextcloud Fork
 
-Решение владельца11.11.2026: этот GitHub-репозиторий становится публичным, PKG хранятся в его GitHub Releases вместе с лицензионными/source materials. Это исключение только для Nextcloud Fork; исходники Tweeks остаются private. Начальная миграция сохраняет существующий pinnedPKG0.6.4, новые Unreleased fixes в нём отсутствуют. Итоговые факты миграции — последние CURRENT_STATE/PROJECT_HANDOFF.
+Решение владельца11.11.2026: этот GitHub-репозиторий открыт публично, PKG хранятся в его GitHub Releases вместе с лицензионными/source materials. Это исключение только для Nextcloud Fork; исходники Tweeks остаются private. Начальная миграция сохраняет существующий pinnedPKG0.6.4, новые Unreleased fixes в нём отсутствуют. Итоговые факты миграции — последние CURRENT_STATE/PROJECT_HANDOFF.
 
 
 Клиент Nextcloud для Mac, в котором **диск в Finder** («Места», File Provider) и **обычная синхронизация
@@ -168,3 +168,6 @@ Personal Team → Manage Certificates → + → Apple Development. `UNSIGNED=1 .
 Установленная0.6.7 уже полностью ARM64:11.11 проверены161Mach-O, x86_64/universal binaries нет. Исходники других платформ пока сохранены для upstream compatibility; их удаление не уменьшит уже ARM64-only installed bundle.
 
 Перед будущей упаковкой make-installer.py проверяет каждый native Mach-O: толькоthinarm64, безIntel/universal/arm64e. Отказ не исправляется правкой подписанного бандла — нужна пересборка. Профиль упаковщика14/14PASS, готовый signed0.6.8 app проходит новый gate; новыйPKG в этапе11.11 не создавался.
+
+
+Публичный download-каталог Tweeks пока закреплён на неизменном [PKG0.6.4 и его соответствующих source/license materials](https://github.com/sawabeckham/nextcloud-fork/releases/tag/nextcloud-fork-v0.6.4). Он перенесён11.11без новой сборки, SHA256b68b4cb314a2102813b89095d1a073d422e1fa26341248380243d24ea7054944. Сохранённые локальныеPKG0.6.7/0.6.8 и свежиеUnreleasedfixes этим переносом не публикуются. Новая URLкарточки Tweeks сохранена вsource, её внедрение — следующаясогласованнаяmain-сборка4.4.7.

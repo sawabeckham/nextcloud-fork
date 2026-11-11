@@ -39,3 +39,6 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 
 ARM64 packaging gate11.11 написан локально на существующих Pythonstdlib и Apple lipo/codesign, без новых external code/dependencies. Известные Mach-O magic constants являются форматом, не включением сторонней реализации; прежние GPL-2.0-or-later SPDX обоих затронутых файлов сохранены. Только diagnostic tests временно компилируют Intel/universal/arm64e fixtures, эти файлы не входят в продукт и удалены после проверки.
+
+
+11.11.2026 relocation0.6.4: все11existingpublicassets (PKG, Qt/non-Qt/projectsource companions, source manifest, AUTHORS, GPLv2/GPLv3, build/relink/source README, SHA256SUMS) скопированы побайтно в Releases того же publicsource repo. GitHubserverSHA256/size всехassets и anonymousPKG pin совпали. Это сохранение опубликованного комплекта и авторства, не новыйfulllicenseaudit/reproduciblebuildclaim. Historicaltagbaseb8a3273 не включает тогдаdirty0.6.4source: source-review+companions остаются предоставленнымsnapshot. Другие owner-source repos не раскрывались.

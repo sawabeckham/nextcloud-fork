@@ -11,7 +11,7 @@ The Nextcloud Desktop Client is an app to synchronize files from Nextcloud Serve
 
 Документация разработки форка: [индекс](doc/INDEX.md). Новые изменения накапливаются в Unreleased; сборка и выпуск выполняются по отдельной команде владельца.
 
-О macOS-форке: [возможности, версия и установка в RomanenkoApp](FORK.md). `./build.sh` создаёт приложение и PKG-установщик; цветной значок форка отличается синим градиентом.
+О macOS-форке: [возможности, версия и установка в RomanenkoApp](FORK.md). `./build.sh` создаёт приложение и PKG-установщик; цветной значок форка отличается синим градиентом. Публичные установщики и соответствующие исходные/лицензионные материалы находятся в [Releases этого репозитория](https://github.com/sawabeckham/nextcloud-fork/releases); версия опубликованного PKG может отставать от текущих Unreleased исходников.
 
 <p align="center">
     <img src="doc/images/main_dialog_christine.png" alt="Desktop Client on Windows" width="450">

@@ -23,3 +23,6 @@ Upstream-инструкции [macOS development](macOS-development.md), [тер
 ## Продолжение11.11.2026
 
 Выборочные macOS fixes PR11030/11024/11145/11253 после PKG0.6.8; исходники Unreleased0.6.9, metadata0.6.8. Читать актуальные первые и последние разделы CURRENT_STATE/PROJECT_HANDOFF и provenance THIRD_PARTY. Установленная программа/готовыйPKG не заменяются этим этапом. ARM64 audit:161Mach-O толькоarm64, код других платформ пока сохранён.
+
+
+11.11.2026 publicPKGhosting: [каноническая раздача и правила выпуска](DEVELOPMENT.md), [итог переноса/анонимная проверка/cleanup](PROJECT_HANDOFF.md). Nextcloud source repo публичный по прямому выбору владельца; existing0.6.4release перенесён вместе со всемиsource/licenseassets, Tweeks source остаётсяprivate.

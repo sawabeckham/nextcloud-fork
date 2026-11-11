@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Текущее состояние nextcloud-fork
 
-**Актуально11.11.2026: выборочно перенесены macOS PR11030/11024/11145/11253 поверх mastercc930c7c; изменения Unreleased (цель0.6.9), metadata/готовый immutable PKG0.6.8 сохранены. Swift full529XCTest/6skips+263SwiftTesting PASS, certificate C++51/QML20 PASS. Consuming ARM64 main/all4native build и packaging14tests PASS; cleanup завершён (подробности в последнем разделе). Установленная0.6.7/35.0.1.67 не менялась;161Mach-O толькоarm64. Реальная миграция/серверная синхронизация не проверены.**
+**Актуально11.11.2026 (source commit `4acb6be`, branch `fork`): выборочно перенесены macOS PR11030/11024/11145/11253 поверх mastercc930c7c; изменения Unreleased (цель0.6.9), metadata/готовый immutable PKG0.6.8 сохранены. Swift full529XCTest/6skips+263SwiftTesting PASS, certificate C++51/QML20 PASS. Consuming ARM64 main/all4native build и packaging14tests PASS; cleanup завершён (подробности в последнем разделе). Установленная0.6.7/35.0.1.67 не менялась;161Mach-O толькоarm64. Реальная миграция/серверная синхронизация не проверены.**
 
 Сверка07.11.2026: PKG0.6.8 собран и проверен, metadata0.6.8/source9dacc2e/upstream mastercc930c7c(35.1.0 alpha). Main35.0.50.68/extension68; подписи/payload/ARM64 прошли, профиль13/13 PASS. Установленная0.6.7 на35.0.1 сохранена, Installer не запускался. Перед установкой нужен свежий metadata backup/rollback plan: пакет автоматически запускает app и выполняется переход Realm→GRDB. Hash/результаты/cleanup — в последнем разделе.
 Это датированный снимок; перед новой задачей сверить Git/PR и установленную копию.
@@ -646,3 +646,6 @@ Auto-review отклонил команды сброса/восстановле�
 Cleanup подтверждён: активных AccountWizardControllerTest/qmltestrunner/swift-test/xctest/macdeployqt0; удалены121generated .app и3.appex только из client/bin и client/shell_integration/MacOSX/Release; осталось0. Swift worker удалил2своих.xctest и rawlogs/patches. Input dependencies/compiler caches, signed release app, readyPKG0.6.8+previous сохранены. Scoped lsregister -u для raw main exit1, FinderSyncBroker exit0; полной очистки каждой LS record не заявляем и global reset не выполняли. Финальные rawlogs из/tmp удаляются после записи отчёта.
 
 Итог:4macOSbackports +ARM64packaging gate в source Unreleased, metadata0.6.8 не менялась. Установка/новый релиз/tag/PR/public upload не выполнялись. Следующий шаг — human review; при отдельной команде владельца готовить новый immutable PKG0.6.9, перед установкой согласовать свежий metadata backup и live migration/sync QA.
+
+
+Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM64 gate, tests и отчёт); отправляется в прежнюю приватную origin/fork. Следующий документационный commit не меняет этот source snapshot.

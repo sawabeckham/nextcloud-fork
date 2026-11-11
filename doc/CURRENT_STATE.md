@@ -5,6 +5,8 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 # Текущее состояние nextcloud-fork
 
+**Актуально11.11:0.6.9 собрана и установлена; подпись, ARM64, автозапуск, миграция и Finder проверены. Последний release source2fd3068; следующая цель0.7.0, metadata0.6.9. Подробные персональные recovery-сведения хранятся только локально.**
+
 **Public hosting11.11 завершён: NextcloudFork repo публичный; неизменный PKG0.6.4 и10source/license materials доступны в его Releases. АнонимныйdownloadHTTP200/75184508bytes/SHA256совпал сTweeks pin. Tweeks sourceURL исправлен (d346b1f), войдёт в его4.4.7; Tweeks repo private, бинарники не обновлялись. Итог/cleanup — последнийPROJECT_HANDOFF.**
 
 **Актуально11.11.2026 (source commit `4acb6be`, branch `fork`): выборочно перенесены macOS PR11030/11024/11145/11253 поверх mastercc930c7c; изменения Unreleased (цель0.6.9), metadata/готовый immutable PKG0.6.8 сохранены. Swift full529XCTest/6skips+263SwiftTesting PASS, certificate C++51/QML20 PASS. Consuming ARM64 main/all4native build и packaging14tests PASS; cleanup завершён (подробности в последнем разделе). Установленная0.6.7/35.0.1.67 не менялась;161Mach-O толькоarm64. Реальная миграция/серверная синхронизация не проверены.**
@@ -671,3 +673,18 @@ Git source snapshot этапа11.11: `4acb6be` (4macOS backports, recursive ARM6
 Прямая команда «надо установить новую версию форка с новыми правками» разрешает подготовить новыйPKG и установитьего. Metadata повышена один раз0.6.8→0.6.9; priorimmutablePKG0.6.8 не содержит4macOSbackports/ARM64gate4acb6be, поэтому не устанавливаемего вместо запрошенныхfixes. Candidatecorrections дальше не повышаютномер. Sourcebase7ea9ac2; установленная read-only receipt0.6.7/Info35.0.1.67 подтверждена.
 
 Используется существующийphysicalcache validation-build-20261101/fork-0.6.1 и прежниеinputdeps/signingTeam. build.sh выполнитfullARM64all/profile/signing/localPKGdelivery; remotepublicationновогоbinary не подразумевается этойкомандой и требует отдельной source/license readiness. Пока идётсборка, workingclient/accountdomains не меняются. Перед установкой нужен свежий coherent per-domainmetadata/queues backup и workingapp/rollbackartifact: новыйpostinstall автоматически запускаетapp и Realm→GRDB import можетудалитьRealm. Исследуется поддерживаемая quiescence extension безdomainremove/reset. Backup содержитличныеmetadata и остаётсятолько вprivate userApplicationSupport, неGit. Результатысборки/backup/установки будутотмечены послефактическихдействий.
+
+
+## 11.11.2026 —0.6.9: сборка, установка и проверка завершены
+
+Команда владельца установить новую версию выполнена. Source snapshot2fd3068: версия0.6.9 поверх проверенных macOSbackports и ARM64gate. Существующая сборочная среда переиспользована; build.sh завершился0: профиль13/13PASS, full ARM64 main/native builds, staging, signing и локальныйPKG. Полные функциональные прогоны из предыдущего source-этапа не повторялись после metadata-only bump и не выдаются за новые runs.
+
+Артефакт Nextcloud-Fork-0.6.9-arm64.pkg:78627705bytes, SHA2564039b6e9824be68c4d6fbc1c38ef677535134d99a835f47f1ae4b3c47c47ed04. Source/payload recursive thinarm64/deepstrictcodesign PASS, main35.0.50.69/extensions69, executable/Info/CodeResources/installer-script byte equality PASS. Подпись приложения Apple Development; внешнийPKG не DeveloperID Installer/notarized.
+
+До установки создан приватный recovery-комплект при штатно остановленных процессах; соответствующие журналы и manifests проверены. Его точное расположение, персональные настройки, идентификаторы и содержимое не публикуются. Установка выполнена штатным Installer после подтверждения владельцем системной авторизации. Receipt0.6.9/installedInfo/signature/автозапуск проверены. Client оставлен работать в обычном режиме без добавленных диагностических CLIфлагов.
+
+Реальный Realm→GRDB import подтверждён сообщениями успешного импорта; согласованные контрольные копии SQLite прошли quick_check=ok. Прежние подключения сохранены. После инициализации и обычного restart Finder открывает подключения без запроса входа и errorbadge. Первоначальный auth-required banner исчез без удаления/пересоздания аккаунтов; точная причина задержки не установлена. Полная сверка файлов с сервером и проверка восстановления не выполнялись. В classic-сканировании встречались сообщения об игнорируемых symlink; их исправление не заявляется.
+
+Временные raw app/appex, контрольные копии баз и собственный подробный debuglog удалены; reusable input caches, signedreleaseapp, готовыйPKG и приватный recovery сохранены. CUA для Qtокна таймаутился, при этом read-only stack sample показал нормальный idleeventloop; полный GUI настроек не объявляется проверенным. Публичный отчёт ограничен сведениями о продукте и неперсональными результатами. Подробная локальная передача хранится только в recovery-комплекте.
+
+Метаданные0.6.9 сохраняются, следующий Unreleased0.7.0. Tweeks этим выпуском не обновлялся. По standingтребованию хранения PKG рядом с исходниками подготовлен перенос готового артефакта в draftRelease того же repo; это не объявление публичной раздачи нового binary до проверки соответствующих source/license materials. Следующий шаг — эксплуатация и накопление новых согласованных изменений.
